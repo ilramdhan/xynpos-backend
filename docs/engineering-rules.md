@@ -57,6 +57,55 @@ cd backend/services/tenant-service && go mod tidy
 
 ---
 
+### RULE-GO-004: `go mod tidy` will UPGRADE the go directive — reset it manually
+**Problem:** Running `go mod tidy` automatically upgrades the `go` directive in `go.mod` to the
+current toolchain version (e.g., 1.22 → 1.25 → 1.26). This silently breaks CI.
+
+**Rule:** After every `go mod tidy`, immediately verify and reset if needed:
+```bash
+# Check versions after tidy
+grep "^go " backend/shared/go.mod backend/services/*/go.mod go.work
+
+# Reset if upgraded beyond pinned version
+sed -i 's/^go 1\.[0-9][0-9]*\.[0-9]*/go 1.22/' \
+  backend/shared/go.mod \
+  backend/services/auth-service/go.mod \
+  backend/services/tenant-service/go.mod \
+  go.work
+```
+
+Also applies to `go.work` — it has its own `go` directive that must stay in sync.
+
+---
+
+### RULE-CI-008: Run CI tests from service working-directory, use go.work for cross-module resolution
+**Problem:** gRPC tests import `shared/proto/auth` via `replace` directive.
+In CI, when tests run from `backend/services/auth-service`, the `replace ../../shared`
+path is resolved correctly because the full repo is checked out AND `go.work` at the
+repo root lists all modules. The `go.work` file enables Go workspace mode automatically.
+
+**Rule:** Keep `go.work` up-to-date with all `use` entries. Every new service must be added.
+`go.work` must have the same `go` version directive as `go.mod` files.
+
+---
+
+### RULE-CI-009: go.work has its own `go` directive — must pin it too
+`go.work` has `go 1.xx` directive that must match the pinned version in all `go.mod` files.
+`go mod tidy` does NOT touch `go.work`, but `go work sync` will upgrade it.
+
+```
+# go.work must match go.mod version
+go 1.22
+
+use (
+  ./backend/services/auth-service
+  ./backend/services/tenant-service
+  ./backend/shared
+)
+```
+
+---
+
 ### RULE-GO-003: Shared module proto packages resolve via replace directive
 The `shared/proto/auth` package is part of the `shared` Go module. Services access it via:
 ```

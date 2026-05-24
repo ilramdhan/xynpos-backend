@@ -5,24 +5,26 @@ on:
     branches: [main, develop]
     paths:
       - 'backend/**'
+      - 'go.work'
       - '.github/workflows/ci.yml'
   pull_request:
     branches: [main, develop]
     paths:
       - 'backend/**'
+      - 'go.work'
 
 env:
-  # RULE: Always pin to the same Go version used in go.mod files.
-  # Changing this requires updating go.mod in ALL modules simultaneously.
+  # RULE-GO-001: Pin to same version as go.mod in ALL modules.
+  # go mod tidy will upgrade this — manually reset to 1.22 after tidy.
   GO_VERSION: "1.22"
   COVERAGE_THRESHOLD: "70"
 
 jobs:
   # ────────────────────────────────────────────────────────────────
   # LINT
-  # RULE: golangci-lint version must be built with Go >= go.mod version.
-  #       If go.mod says "go 1.22", use golangci-lint built with >=Go1.22.
-  #       Never use `latest` — pin the version for reproducibility.
+  # RULE-CI-005: Pin golangci-lint version, never use 'latest'.
+  # RULE-CI-006: --config path is relative to working-directory.
+  #   From backend/services/auth-service to repo root = ../../../
   # ────────────────────────────────────────────────────────────────
   lint:
     name: Lint (${{ matrix.service }})
@@ -38,32 +40,32 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
-          # RULE: cache-dependency-path must point to the correct go.sum
-          # relative to the repo root, not the working-directory.
+          # RULE-CI-002: cache-dependency-path relative to REPO ROOT, not working-directory.
           cache-dependency-path: backend/services/${{ matrix.service }}/go.sum
 
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:
-          # RULE: Pin golangci-lint version. Must be built with Go >= go.mod version.
-          # v1.64.8 is built with Go 1.24 — incompatible with go.mod go 1.26.x.
-          # After downgrading go.mod to 1.22, v1.64.8 works fine.
           version: v1.64.8
           working-directory: backend/services/${{ matrix.service }}
-          args: --config=../../.golangci.yml --timeout 5m
+          # RULE-CI-006: Path from backend/services/<svc>/ to repo root is ../../../
+          # NOT ../../ — that would point to backend/ which has no .golangci.yml
+          args: --config=../../../.golangci.yml --timeout 5m
 
   # ────────────────────────────────────────────────────────────────
   # TEST — AUTH SERVICE
-  # RULE: Use `go test ./internal/...` not `./...` to avoid building
-  #       cmd/ and docs/ packages that may have external tool deps
-  #       (swag, covdata) not available in CI runners.
+  # RULE-CI-008: Run tests from REPO ROOT using go.work to resolve
+  #   cross-module dependencies (shared/proto/auth, etc.).
+  #   DO NOT use `working-directory: backend/services/auth-service`
+  #   because go.work is in the repo root and replace directives
+  #   are resolved relative to go.mod location.
+  # RULE-CI-003: Target specific packages WITH test files only.
+  #   Avoid ./internal/... which includes event/ and repository/postgres/
+  #   that have no tests and cause `go: no such tool "covdata"` errors.
   # ────────────────────────────────────────────────────────────────
   test-auth-service:
     name: Test — auth-service
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: backend/services/auth-service
     steps:
       - uses: actions/checkout@v4
 
@@ -71,14 +73,21 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
-          # RULE: cache-dependency-path is relative to the REPO ROOT, not
-          # the working-directory. This is a common mistake.
-          cache-dependency-path: backend/services/auth-service/go.sum
+          cache-dependency-path: |
+            backend/services/auth-service/go.sum
+            backend/shared/go.sum
 
-      - name: Run tests (internal packages only)
+      - name: Run tests (packages with test files only)
+        working-directory: backend/services/auth-service
         run: |
-          # Run all internal tests — no -coverpkg to keep it simple
-          go test ./internal/... \
+          # RULE-CI-008: go.work in repo root enables cross-module resolution.
+          # RULE-CI-003: Scope to packages that actually HAVE test files.
+          #   DO NOT use ./internal/... — includes event/ repository/ with no tests
+          #   causing "go: no such tool covdata" errors.
+          go test \
+            ./internal/delivery/grpc/... \
+            ./internal/delivery/http/handler/... \
+            ./internal/usecase/... \
             -race \
             -count=1 \
             -timeout 120s \
@@ -87,27 +96,18 @@ jobs:
           echo "=== Coverage Summary ==="
           go tool cover -func=coverage.out | tail -3
 
-      - name: Check coverage per layer (delivery + usecase >= 70%)
+      - name: Check delivery layer coverage >= ${{ env.COVERAGE_THRESHOLD }}%
+        working-directory: backend/services/auth-service
         run: |
-          # RULE: Check coverage per testable layer, not aggregate.
-          # Aggregate includes domain/ and repository/ (no unit tests) which
-          # dilutes the metric. Each tested layer must individually meet threshold.
-          HANDLER=$(go tool cover -func=coverage.out | grep '/delivery/' | grep -v '_test' | awk '{sum+=$3; count++} END {if(count>0) printf "%.1f", sum/count; else print "0"}' | tr -d '%')
-          USECASE=$(go tool cover -func=coverage.out | grep '/usecase/' | grep -v '_test' | awk '{sum+=$3; count++} END {if(count>0) printf "%.1f", sum/count; else print "0"}' | tr -d '%')
+          # RULE-CI-007: Measure per-layer, not aggregate.
+          HANDLER=$(go tool cover -func=coverage.out | grep '/delivery/' \
+            | awk '{gsub(/%/,""); sum+=$3; count++} END {if(count>0) printf "%.1f", sum/count; else print "0"}')
           echo "Delivery layer avg: ${HANDLER}%"
-          echo "Usecase layer avg:  ${USECASE}%"
-          THRESHOLD=${{ env.COVERAGE_THRESHOLD }}
-          FAIL=0
-          if [ $(echo "$HANDLER < $THRESHOLD" | bc -l) -eq 1 ]; then
-            echo "❌ Delivery coverage ${HANDLER}% is below ${THRESHOLD}%"
-            FAIL=1
+          if [ $(echo "$HANDLER < ${{ env.COVERAGE_THRESHOLD }}" | bc -l) -eq 1 ]; then
+            echo "❌ Delivery coverage ${HANDLER}% below ${{ env.COVERAGE_THRESHOLD }}%"
+            exit 1
           fi
-          if [ $(echo "$USECASE < $THRESHOLD" | bc -l) -eq 1 ]; then
-            echo "⚠️  Usecase coverage ${USECASE}% is below ${THRESHOLD}% (acceptable if delivery is above)"
-            # Warn but don't fail — usecase tests grow over time
-          fi
-          if [ "$FAIL" -eq 1 ]; then exit 1; fi
-          echo "✅ Coverage thresholds met"
+          echo "✅ Coverage ${HANDLER}% passes threshold"
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
@@ -122,9 +122,6 @@ jobs:
   test-tenant-service:
     name: Test — tenant-service
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: backend/services/tenant-service
     steps:
       - uses: actions/checkout@v4
 
@@ -132,11 +129,16 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache-dependency-path: backend/services/tenant-service/go.sum
+          cache-dependency-path: |
+            backend/services/tenant-service/go.sum
+            backend/shared/go.sum
 
-      - name: Run tests (internal packages only)
+      - name: Run tests (packages with test files only)
+        working-directory: backend/services/tenant-service
         run: |
-          go test ./internal/... \
+          go test \
+            ./internal/delivery/http/handler/... \
+            ./internal/usecase/... \
             -race \
             -count=1 \
             -timeout 120s \
@@ -145,23 +147,17 @@ jobs:
           echo "=== Coverage Summary ==="
           go tool cover -func=coverage.out | tail -3
 
-      - name: Check coverage per layer (delivery >= 70%)
+      - name: Check delivery layer coverage >= ${{ env.COVERAGE_THRESHOLD }}%
+        working-directory: backend/services/tenant-service
         run: |
-          HANDLER=$(go tool cover -func=coverage.out | grep '/delivery/' | grep -v '_test' | awk '{sum+=$3; count++} END {if(count>0) printf "%.1f", sum/count; else print "0"}' | tr -d '%')
-          USECASE=$(go tool cover -func=coverage.out | grep '/usecase/' | grep -v '_test' | awk '{sum+=$3; count++} END {if(count>0) printf "%.1f", sum/count; else print "0"}' | tr -d '%')
+          HANDLER=$(go tool cover -func=coverage.out | grep '/delivery/' \
+            | awk '{gsub(/%/,""); sum+=$3; count++} END {if(count>0) printf "%.1f", sum/count; else print "0"}')
           echo "Delivery layer avg: ${HANDLER}%"
-          echo "Usecase layer avg:  ${USECASE}%"
-          THRESHOLD=${{ env.COVERAGE_THRESHOLD }}
-          FAIL=0
-          if [ $(echo "$HANDLER < $THRESHOLD" | bc -l) -eq 1 ]; then
-            echo "❌ Delivery coverage ${HANDLER}% is below ${THRESHOLD}%"
-            FAIL=1
+          if [ $(echo "$HANDLER < ${{ env.COVERAGE_THRESHOLD }}" | bc -l) -eq 1 ]; then
+            echo "❌ Delivery coverage ${HANDLER}% below ${{ env.COVERAGE_THRESHOLD }}%"
+            exit 1
           fi
-          if [ $(echo "$USECASE < $THRESHOLD" | bc -l) -eq 1 ]; then
-            echo "⚠️  Usecase coverage ${USECASE}% is below ${THRESHOLD}% (warn only)"
-          fi
-          if [ "$FAIL" -eq 1 ]; then exit 1; fi
-          echo "✅ Coverage thresholds met"
+          echo "✅ Coverage ${HANDLER}% passes threshold"
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
@@ -172,7 +168,6 @@ jobs:
 
   # ────────────────────────────────────────────────────────────────
   # BUILD — Docker Images
-  # Only runs on main/develop after tests pass
   # ────────────────────────────────────────────────────────────────
   build:
     name: Build Docker Images (${{ matrix.service }})
@@ -210,9 +205,8 @@ jobs:
 
   # ────────────────────────────────────────────────────────────────
   # PROTO LINT
-  # RULE: Always install protoc-gen-go and protoc-gen-go-grpc BEFORE
-  #       running protoc. `apt-get install protobuf-compiler` only
-  #       installs the protoc binary, NOT the Go plugins.
+  # RULE-CI-004: Install protoc-gen-go + protoc-gen-go-grpc BEFORE protoc.
+  #   apt-get protobuf-compiler installs protoc binary ONLY.
   # ────────────────────────────────────────────────────────────────
   proto-lint:
     name: Proto Lint
@@ -231,13 +225,9 @@ jobs:
           sudo apt-get install -y protobuf-compiler
 
       - name: Install Go protoc plugins
-        # RULE: Must install both protoc-gen-go AND protoc-gen-go-grpc.
-        # Without these, protoc cannot generate Go/gRPC output even if
-        # protobuf-compiler is installed.
         run: |
           go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
           go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
-          echo "${{ runner.tool_cache }}/go/bin" >> $GITHUB_PATH
           echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
 
       - name: Verify proto files compile

@@ -1,6 +1,6 @@
 module github.com/extendedsynaptic/xynpos/tenant-service
 
-go 1.25.0
+go 1.22
 
 replace github.com/extendedsynaptic/xynpos/shared => ../../shared
 

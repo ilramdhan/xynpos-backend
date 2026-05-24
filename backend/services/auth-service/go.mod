@@ -1,6 +1,6 @@
 module github.com/extendedsynaptic/xynpos/auth-service
 
-go 1.25.0
+go 1.22
 
 require (
 	github.com/extendedsynaptic/xynpos/shared v0.0.0-00010101000000-000000000000

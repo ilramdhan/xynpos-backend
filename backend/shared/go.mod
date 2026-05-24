@@ -1,6 +1,6 @@
 module github.com/extendedsynaptic/xynpos/shared
 
-go 1.25.0
+go 1.22
 
 require (
 	github.com/go-playground/validator/v10 v10.30.2
