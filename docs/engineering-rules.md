@@ -19,20 +19,33 @@
 
 ## 1. Go Module & Version Rules
 
-### RULE-GO-001: Go version in go.mod must be ≤ CI runner Go version
-**Problem:** If `go.mod` says `go 1.26.2` but golangci-lint is built with Go 1.24,
-lint will fail with: `can't load config: the Go language version (go1.24) used to build
-golangci-lint is lower than the targeted Go version (1.26.2)`
+### RULE-GO-001: Pin Go version to the ACTUAL minimum required by your dependencies
+**Problem (Historical):** We incorrectly tried to pin `go 1.22` but `fiber/v3@v3.3.0`
+requires `go >= 1.25.0`. This caused CI errors: `module fiber/v3 requires go >= 1.25.0`.
 
-**Rule:** The `go` directive in ALL `go.mod` files must be pinned to the same version
-as `GO_VERSION` in CI workflows. Currently pinned to **`go 1.22`**.
+**Rule:** The `go` directive in `go.mod` MUST be >= the highest Go version required
+by any direct dependency. Check with:
+```bash
+# Find the highest Go version required by any dependency
+go mod download -json all | python3 -c "
+import sys, json
+for line in sys.stdin:
+    try:
+        d = json.loads(line.strip())
+        if d.get('GoVersion', '') >= '1.24':
+            print(d['Path'], d['GoVersion'])
+    except: pass
+"
+```
+
+**Current minimum:** `go 1.25` (required by `fiber/v3@v3.3.0` and `validator/v10`)
 
 ```
-# Correct ✅
-go 1.22
+# Correct ✅ — matches dependency requirements
+go 1.25
 
-# Wrong ❌ — will break golangci-lint in CI
-go 1.26.2
+# Wrong ❌ — fiber/v3 won't install
+go 1.22
 ```
 
 **When bumping Go version:** Update ALL these files simultaneously:
@@ -40,8 +53,25 @@ go 1.26.2
 - `backend/services/auth-service/go.mod`
 - `backend/services/tenant-service/go.mod`
 - `backend/services/*/go.mod` (all future services)
+- `go.work`
 - `.github/workflows/ci.yml` → `GO_VERSION`
 - `.github/workflows/ci-auth-service.yml` → `GO_VERSION`
+
+---
+
+### RULE-GO-005: golangci-lint version must match Go version used in go.mod
+**Problem:** golangci-lint v1.x series was built with Go up to 1.24. If `go.mod` says
+`go 1.25`, golangci-lint v1.x fails with: `the Go language version used to build
+golangci-lint is lower than the targeted Go version`.
+
+**Rule:** Use golangci-lint v2.x which is built with Go 1.25+.
+- golangci-lint v1.x (final: ~v1.64.x) → supports up to `go 1.24` in go.mod
+- golangci-lint v2.x → supports `go 1.25+`
+
+**Current pinned version:** `v2.12.2`
+
+**IMPORTANT:** golangci-lint v2 requires `.golangci.yml` to have `version: "2"` at the top
+and uses different config structure (see `.golangci.yml` for details).
 
 ---
 
