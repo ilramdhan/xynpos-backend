@@ -1,12 +1,15 @@
 module github.com/extendedsynaptic/xynpos/auth-service
 
-go 1.26.2
+go 1.25.0
 
 require (
 	github.com/extendedsynaptic/xynpos/shared v0.0.0-00010101000000-000000000000
+	github.com/gofiber/contrib/swagger v1.3.0
 	github.com/gofiber/fiber/v3 v3.3.0
 	github.com/google/uuid v1.6.0
 	github.com/stretchr/testify v1.11.1
+	github.com/swaggo/swag v1.16.6
+	go.opentelemetry.io/otel v1.43.0
 	go.uber.org/zap v1.28.0
 	golang.org/x/crypto v0.52.0
 	google.golang.org/grpc v1.81.1
@@ -39,7 +42,6 @@ require (
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-playground/validator/v10 v10.30.2 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
-	github.com/gofiber/contrib/swagger v1.3.0 // indirect
 	github.com/gofiber/fiber/v2 v2.52.6 // indirect
 	github.com/gofiber/schema v1.7.1 // indirect
 	github.com/gofiber/utils/v2 v2.0.6 // indirect
@@ -83,13 +85,11 @@ require (
 	github.com/spf13/viper v1.21.0 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
-	github.com/swaggo/swag v1.16.6 // indirect
 	github.com/tinylib/msgp v1.6.4 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasthttp v1.71.0 // indirect
 	go.mongodb.org/mongo-driver v1.13.1 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
-	go.opentelemetry.io/otel v1.43.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.43.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.43.0 // indirect
 	go.opentelemetry.io/otel/metric v1.43.0 // indirect
