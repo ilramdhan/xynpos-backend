@@ -54,35 +54,30 @@ linters:
     misspell:
       locale: US
 
-exclusions:
-  rules:
-    - path: _test\.go
-      linters:
-        - errcheck
-        - gocritic
-        - gosec
-    - path: cmd/
-      linters:
-        - gosec
-    - path: proto/
-      linters:
-        - all
-    - path: docs/
-      linters:
-        - all
+  # RULE-CI-012: In golangci-lint v2, exclusions are nested under linters.exclusions
+  # NOT as a top-level 'exclusions' key (that was removed in v2).
+  # Error if top-level: "additional properties 'exclusions' not allowed"
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - errcheck
+          - gocritic
+          - gosec
+      - path: cmd/
+        linters:
+          - gosec
+      - path: proto/
+        linters:
+          - all
+      - path: docs/
+        linters:
+          - all
 
 issues:
   max-issues-per-linter: 50
   max-same-issues: 3
 
-# RULE-CI-012: In golangci-lint v2, output.formats must be a MAP not a slice.
-# Wrong (v1 style / slice):
-#   formats:
-#     - format: colored-line-number
-# Correct (v2 style / map):
-#   formats:
-#     text:
-#       path: stdout
 output:
   formats:
     text:
