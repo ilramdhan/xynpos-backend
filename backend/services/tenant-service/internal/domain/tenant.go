@@ -40,6 +40,7 @@ type Tenant struct {
 // BusinessType defines the nature of the business.
 type BusinessType string
 
+// Supported business types for tenants.
 const (
 	BusinessTypeRetail     BusinessType = "retail"
 	BusinessTypeFnB        BusinessType = "fnb"
@@ -164,6 +165,7 @@ type InviteUserInput struct {
 // Domain Errors
 // ──────────────────────────────────────────────
 
+// Domain errors for tenant operations.
 var (
 	ErrTenantNotFound      = errors.New("tenant not found")
 	ErrOutletNotFound      = errors.New("outlet not found")

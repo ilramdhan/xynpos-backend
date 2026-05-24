@@ -89,17 +89,17 @@ func (uc *tenantUsecase) CreateTenant(ctx context.Context, ownerID uuid.UUID, in
 		SchemaName:   schemaName,
 	}
 
-	if err := uc.tenantRepo.Create(ctx, tenant); err != nil {
-		tracer.RecordError(span, err)
-		return nil, err
+	if createErr := uc.tenantRepo.Create(ctx, tenant); createErr != nil {
+		tracer.RecordError(span, createErr)
+		return nil, createErr
 	}
 
 	// Provision PostgreSQL schema for this tenant
-	if err := uc.provisionTenantSchema(ctx, schemaName); err != nil {
-		tracer.RecordError(span, err)
-		log.Error("failed to provision tenant schema, rolling back", zap.Error(err), zap.String("tenant_id", tenantID.String()))
+	if provisionErr := uc.provisionTenantSchema(ctx, schemaName); provisionErr != nil {
+		tracer.RecordError(span, provisionErr)
+		log.Error("failed to provision tenant schema, rolling back", zap.Error(provisionErr), zap.String("tenant_id", tenantID.String()))
 		_ = uc.tenantRepo.SoftDelete(ctx, tenantID)
-		return nil, apperrors.Wrap(err, "SCHEMA_PROVISION_ERROR", "failed to create tenant database schema", 500)
+		return nil, apperrors.Wrap(provisionErr, "SCHEMA_PROVISION_ERROR", "failed to create tenant database schema", 500)
 	}
 
 	// Add owner as tenant member with 'owner' role
@@ -473,10 +473,10 @@ func generateSlug(name string) string {
 func (uc *tenantUsecase) ensureUniqueSlug(ctx context.Context, base string) (string, error) {
 	slug := base
 	for i := 1; i <= 10; i++ {
-		_, err := uc.tenantRepo.FindBySlug(ctx, slug)
-		if err != nil {
+		_, findErr := uc.tenantRepo.FindBySlug(ctx, slug)
+		if findErr != nil {
 			// Not found = slug is available
-			return slug, nil
+			return slug, nil //nolint:nilerr // intentional: findErr means slug doesn't exist, which is success
 		}
 		slug = fmt.Sprintf("%s-%d", base, i)
 	}

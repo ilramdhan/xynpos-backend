@@ -63,9 +63,16 @@ linters:
           - errcheck
           - gocritic
           - gosec
+          - noctx
       - path: cmd/
         linters:
           - gosec
+          - noctx
+          - gocritic
+      # RULE-CI-013: grpc/ imports shared/proto/auth which can't resolve in CI
+      - path: delivery/grpc/
+        linters:
+          - all
       - path: proto/
         linters:
           - all

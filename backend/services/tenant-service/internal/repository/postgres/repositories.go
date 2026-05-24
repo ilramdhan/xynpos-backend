@@ -19,6 +19,7 @@ import (
 
 type tenantRepo struct{ db *gorm.DB }
 
+// NewTenantRepository creates a new TenantRepository backed by PostgreSQL.
 func NewTenantRepository(db *gorm.DB) domain.TenantRepository {
 	return &tenantRepo{db: db}
 }
@@ -92,6 +93,7 @@ func (r *tenantRepo) Exists(ctx context.Context, id uuid.UUID) (bool, error) {
 
 type outletRepo struct{ db *gorm.DB }
 
+// NewOutletRepository creates a new OutletRepository backed by PostgreSQL.
 func NewOutletRepository(db *gorm.DB) domain.OutletRepository {
 	return &outletRepo{db: db}
 }
@@ -151,6 +153,7 @@ func (r *outletRepo) CountByTenantID(ctx context.Context, tenantID uuid.UUID) (i
 
 type tenantUserRepo struct{ db *gorm.DB }
 
+// NewTenantUserRepository creates a new TenantUserRepository backed by PostgreSQL.
 func NewTenantUserRepository(db *gorm.DB) domain.TenantUserRepository {
 	return &tenantUserRepo{db: db}
 }
@@ -221,6 +224,7 @@ func (r *tenantUserRepo) CountByTenantID(ctx context.Context, tenantID uuid.UUID
 
 type roleRepo struct{ db *gorm.DB }
 
+// NewRoleRepository creates a new RoleRepository backed by PostgreSQL.
 func NewRoleRepository(db *gorm.DB) domain.RoleRepository {
 	return &roleRepo{db: db}
 }
@@ -287,6 +291,7 @@ func (r *roleRepo) Delete(ctx context.Context, id uuid.UUID) error {
 
 type invitationRepo struct{ db *gorm.DB }
 
+// NewInvitationRepository creates a new InvitationRepository backed by PostgreSQL.
 func NewInvitationRepository(db *gorm.DB) domain.InvitationRepository {
 	return &invitationRepo{db: db}
 }

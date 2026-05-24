@@ -170,7 +170,7 @@ func (h *TenantHandler) UpdateTenant(c fiber.Ctx) error {
 	}
 
 	var input domain.UpdateTenantInput
-	if err := c.Bind().JSON(&input); err != nil {
+	if bindErr := c.Bind().JSON(&input); bindErr != nil {
 		return c.Status(400).JSON(response.Error("INVALID_BODY", "Invalid request body"))
 	}
 
@@ -235,7 +235,7 @@ func (h *TenantHandler) CreateOutlet(c fiber.Ctx) error {
 	}
 
 	var input domain.CreateOutletInput
-	if err := c.Bind().JSON(&input); err != nil {
+	if bindErr := c.Bind().JSON(&input); bindErr != nil {
 		return c.Status(400).JSON(response.Error("INVALID_BODY", "Invalid request body"))
 	}
 	if ve := validator.Validate(input); ve != nil {
@@ -274,7 +274,7 @@ func (h *TenantHandler) UpdateOutlet(c fiber.Ctx) error {
 	}
 
 	var input domain.CreateOutletInput
-	if err := c.Bind().JSON(&input); err != nil {
+	if bindErr := c.Bind().JSON(&input); bindErr != nil {
 		return c.Status(400).JSON(response.Error("INVALID_BODY", "Invalid request body"))
 	}
 
@@ -398,6 +398,7 @@ type acceptInvitationRequest struct {
 	Token string `json:"token" validate:"required"`
 }
 
+// AcceptInvitation handles POST /v1/invitations/accept.
 func (h *TenantHandler) AcceptInvitation(c fiber.Ctx) error {
 	log := logger.FromContext(c.Context())
 	userID, err := parseUUID(middleware.GetUserID(c))
@@ -471,6 +472,7 @@ type updateMemberRoleRequest struct {
 	RoleID string `json:"role_id" validate:"required,uuid4"`
 }
 
+// UpdateMemberRole handles PATCH /v1/tenants/:tenant_id/members/:user_id/role.
 func (h *TenantHandler) UpdateMemberRole(c fiber.Ctx) error {
 	log := logger.FromContext(c.Context())
 	tenantID, err := parseUUID(c.Params("tenant_id"))
@@ -483,7 +485,7 @@ func (h *TenantHandler) UpdateMemberRole(c fiber.Ctx) error {
 	}
 
 	var req updateMemberRoleRequest
-	if err := c.Bind().JSON(&req); err != nil {
+	if bindErr := c.Bind().JSON(&req); bindErr != nil {
 		return c.Status(400).JSON(response.Error("INVALID_BODY", "Invalid request body"))
 	}
 	if ve := validator.Validate(req); ve != nil {
