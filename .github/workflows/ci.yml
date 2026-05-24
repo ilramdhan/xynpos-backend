@@ -50,17 +50,17 @@ jobs:
 
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v7
+        env:
+          # RULE-CI-014: golangci-lint runs from working-directory (backend/services/<svc>/)
+          # but go.work is at repo root. Without explicit GOWORK, Go can't resolve
+          # cross-module imports (shared/proto/auth) causing typecheck failures.
+          GOWORK: ${{ github.workspace }}/go.work
         with:
-          # RULE-CI-005: golangci-lint v2.x supports Go 1.25+. v1.x was built
-          # with Go 1.24 and rejects go.mod with go >= 1.25.
-          # Config format: .golangci.yml must use version: "2" schema.
+          # RULE-CI-005: golangci-lint v2.x supports Go 1.25+.
           version: v2.12.2
           working-directory: backend/services/${{ matrix.service }}
           # RULE-CI-006: Path from backend/services/<svc>/ to repo root = ../../../
-          # RULE-CI-013: --skip-dirs prevents compilation of grpc/ which imports
-          #   shared/proto/auth (unresolvable in CI). Exclusion rules DON'T work
-          #   for typecheck errors — those happen at compilation, before linting.
-          args: --config=../../../.golangci.yml --timeout 5m --skip-dirs=internal/delivery/grpc
+          args: --config=../../../.golangci.yml --timeout 5m
 
   # ────────────────────────────────────────────────────────────────
   # TEST — AUTH SERVICE
