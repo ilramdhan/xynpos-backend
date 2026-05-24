@@ -209,16 +209,29 @@ linters:
 
 ---
 
-### RULE-CI-013: Exclude `./internal/delivery/grpc/...` from CI test scope
+### RULE-CI-013: Exclude `internal/delivery/grpc/` from CI lint AND test scope
 **Problem:** grpc package imports `shared/proto/auth` (workspace-local module).
 GitHub Actions cannot resolve workspace-local proto packages even with go.work.sum committed.
-`handler` and `usecase` pass fine. Only grpc fails.
 
+**Critical:** `linters.exclusions.rules` with `path: delivery/grpc/` does NOT fix this.
+typecheck errors happen at Go **compilation** phase, BEFORE linters run.
+Exclusion rules only suppress linter **output** (post-compilation).
+
+**Rule for lint:** Use `--skip-dirs` CLI flag (prevents compilation entirely):
+```yaml
+# Wrong ❌ — exclusion rules don't work for typecheck (compilation) errors
+args: --config=../../../.golangci.yml --timeout 5m
+
+# Correct ✅ — skip-dirs prevents directory from being compiled
+args: --config=../../../.golangci.yml --timeout 5m --skip-dirs=internal/delivery/grpc
+```
+
+**Rule for tests:** Exclude grpc from `go test` scope:
 ```yaml
 # Wrong ❌
 go test ./internal/delivery/grpc/... ./internal/delivery/http/handler/...
 
-# Correct ✅ — exclude grpc from CI
+# Correct ✅
 go test ./internal/delivery/http/handler/... ./internal/usecase/...
 ```
 gRPC is 100% tested locally. Integration tests cover it end-to-end.
