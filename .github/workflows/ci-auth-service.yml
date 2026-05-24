@@ -38,7 +38,7 @@ jobs:
           cache-dependency-path: backend/services/auth-service/go.sum
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
           # RULE-CI-005: Use golangci-lint v2.x (built with Go 1.25+).
           version: v2.12.2

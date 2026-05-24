@@ -125,13 +125,62 @@ repo root lists all modules. The `go.work` file enables Go workspace mode automa
 
 ```
 # go.work must match go.mod version
-go 1.22
+go 1.25
 
 use (
   ./backend/services/auth-service
   ./backend/services/tenant-service
   ./backend/shared
 )
+```
+
+---
+
+### RULE-CI-010: `go.work.sum` MUST be committed — NEVER add it to .gitignore
+**Problem:** `go.work.sum` was added to `.gitignore`, causing CI failures:
+```
+no required module provides package github.com/extendedsynaptic/xynpos/shared/proto/auth
+```
+This happened because Go workspace mode requires `go.work.sum` to verify
+cross-module dependency checksums. Without it, packages from other workspace
+modules (like `shared/proto/auth`) cannot be resolved in CI even when
+the full repo is checked out and `go.work` is present.
+
+**Rule:**
+- `go.work.sum` MUST be tracked by git (do NOT add to `.gitignore`)
+- Run `go work sync` after adding new dependencies or workspace modules
+- Commit the resulting `go.work.sum` changes
+
+```bash
+# After adding new deps or modules:
+go work sync
+git add go.work.sum
+git commit -m "chore: sync go.work.sum"
+```
+
+**Contrast with go.sum:** Individual module `go.sum` files are always committed.
+`go.work.sum` is additional and covers cross-workspace checksums.
+
+---
+
+### RULE-CI-011: golangci-lint-action v6 does NOT support golangci-lint v2.x
+**Problem:** Using `golangci/golangci-lint-action@v6` with `version: v2.12.2` causes:
+```
+Error: invalid version string 'v2.12.2', golangci-lint v2 is not supported by
+golangci-lint-action v6, you must update to golangci-lint-action v7.
+```
+
+**Rule:** golangci-lint v2.x REQUIRES `golangci-lint-action@v7`:
+```yaml
+# Wrong ❌ — v6 only supports golangci-lint v1.x
+- uses: golangci/golangci-lint-action@v6
+  with:
+    version: v2.12.2
+
+# Correct ✅
+- uses: golangci/golangci-lint-action@v7
+  with:
+    version: v2.12.2
 ```
 
 ---
@@ -234,30 +283,35 @@ protoc-gen-go: program not found or is not executable
 
 ---
 
-### RULE-CI-005: Pin golangci-lint version, never use `latest`
-**Problem:** `version: latest` in golangci-lint-action can pull a version built with a
-newer Go that conflicts with go.mod, or introduce breaking linter changes.
+### RULE-CI-005: Pin golangci-lint version and use correct action version
+**Problem:** `version: latest` can pull incompatible versions. More critically,
+`golangci-lint-action@v6` does NOT support `golangci-lint v2.x` (see RULE-CI-011).
 
-**Rule:** Always pin the version. Currently using **`v1.64.8`**. Update only deliberately.
-
+**Rule:** Always pin both the action version AND the lint version:
 ```yaml
-- uses: golangci/golangci-lint-action@v6
+# For Go >= 1.25 projects:
+- uses: golangci/golangci-lint-action@v7  # v7 required for golangci-lint v2.x
   with:
-    version: v1.64.8  # Pinned — do NOT use 'latest'
+    version: v2.12.2  # Pinned — do NOT use 'latest'
 ```
+
+Compatibility matrix:
+- go.mod `go <= 1.24` → golangci-lint v1.x → golangci-lint-action@v6
+- go.mod `go >= 1.25` → golangci-lint v2.x → golangci-lint-action@v7
 
 ---
 
-### RULE-CI-006: golangci-lint `working-directory` needs `--config` path adjustment
-When using `working-directory` option in golangci-lint-action, the `--config` path
-is relative to the `working-directory`, not the repo root.
+### RULE-CI-006: golangci-lint `--config` path is relative to `working-directory`
+When using `working-directory: backend/services/<svc>`, the `--config` path is
+relative to that directory. `.golangci.yml` is at repo root, which is 3 levels up.
 
 ```yaml
-# The .golangci.yml is at repo root (../../.golangci.yml from service dir)
-args: --config=../../.golangci.yml --timeout 5m
-```
+# Wrong ❌ — goes to backend/.golangci.yml (doesn't exist)
+args: --config=../../.golangci.yml
 
----
+# Correct ✅ — goes to repo root (3 levels from backend/services/<svc>/)
+args: --config=../../../.golangci.yml --timeout 5m
+```
 
 ### RULE-CI-007: Measure coverage PER LAYER, not aggregate across all packages
 **Problem:** `go tool cover -func=coverage.out | grep total` returns coverage across ALL

@@ -28,8 +28,10 @@ coverage.html
 .DS_Store
 Thumbs.db
 
-# Go workspace sum (auto-generated)
-go.work.sum
+# RULE-CI-010: go.work.sum MUST be committed to git.
+# Without it, CI cannot resolve cross-workspace dependencies (e.g. shared/proto/auth).
+# Do NOT add go.work.sum to .gitignore.
+# Regenerate with: go work sync
 
 # Swagger generated
 docs/swagger.json
