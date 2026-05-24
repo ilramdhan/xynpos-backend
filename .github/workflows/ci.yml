@@ -14,9 +14,10 @@ on:
       - 'go.work'
 
 env:
-  # RULE-GO-001: Pin to same version as go.mod in ALL modules.
-  # go mod tidy will upgrade this — manually reset to 1.22 after tidy.
-  GO_VERSION: "1.22"
+  # RULE-GO-001: Pin to the ACTUAL minimum version required by dependencies.
+  # fiber/v3@v3.3.0 requires go >= 1.25.0 — do NOT pin below 1.25.
+  # After go mod tidy, verify this stays at 1.25 (tidy may upgrade it).
+  GO_VERSION: "1.25"
   COVERAGE_THRESHOLD: "70"
 
 jobs:
@@ -46,10 +47,12 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:
-          version: v1.64.8
+          # RULE-CI-005: golangci-lint v2.x supports Go 1.25+. v1.x was built
+          # with Go 1.24 and rejects go.mod with go >= 1.25.
+          # Config format: .golangci.yml must use version: "2" schema.
+          version: v2.12.2
           working-directory: backend/services/${{ matrix.service }}
-          # RULE-CI-006: Path from backend/services/<svc>/ to repo root is ../../../
-          # NOT ../../ — that would point to backend/ which has no .golangci.yml
+          # RULE-CI-006: Path from backend/services/<svc>/ to repo root = ../../../
           args: --config=../../../.golangci.yml --timeout 5m
 
   # ────────────────────────────────────────────────────────────────

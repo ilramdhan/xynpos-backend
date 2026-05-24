@@ -17,8 +17,8 @@ env:
   SERVICE_PATH: backend/services/auth-service
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}/auth-service
-  # RULE-GO-001: Pin to go.mod version. go mod tidy will upgrade — reset manually.
-  GO_VERSION: "1.22"
+  # RULE-GO-001: fiber/v3@v3.3.0 requires go >= 1.25. Never pin below 1.25.
+  GO_VERSION: "1.25"
 
 jobs:
   # ──────────────────────────────────────────────────────────────
@@ -40,10 +40,10 @@ jobs:
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:
-          version: v1.64.8
+          # RULE-CI-005: Use golangci-lint v2.x (built with Go 1.25+).
+          version: v2.12.2
           working-directory: ${{ env.SERVICE_PATH }}
           # RULE-CI-006: From backend/services/auth-service to repo root = ../../../
-          # NOT ../../ which only goes to backend/ (no .golangci.yml there)
           args: --config=../../../.golangci.yml --timeout=10m
 
       - name: Security scan (govulncheck)
