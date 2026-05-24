@@ -42,16 +42,13 @@ jobs:
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v7
-        env:
-          # RULE-CI-014: Explicit GOWORK enables workspace mode so golangci-lint
-          # can resolve cross-module imports (shared/proto/auth).
-          GOWORK: ${{ github.workspace }}/go.work
         with:
           # RULE-CI-005: Use golangci-lint v2.x (built with Go 1.25+).
           version: v2.12.2
-          working-directory: ${{ env.SERVICE_PATH }}
-          # RULE-CI-006: From backend/services/auth-service to repo root = ../../../
-          args: --config=../../../.golangci.yml --timeout=10m
+          # RULE-CI-014: Run from REPO ROOT where go.work lives.
+          #   golangci-lint's type checker can't resolve replace directives
+          #   from service subdirectories. Target service packages explicitly.
+          args: --config=.golangci.yml --timeout=10m ./backend/services/auth-service/...
 
       - name: Security scan (govulncheck)
         working-directory: ${{ env.SERVICE_PATH }}

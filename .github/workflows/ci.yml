@@ -50,17 +50,15 @@ jobs:
 
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v7
-        env:
-          # RULE-CI-014: golangci-lint runs from working-directory (backend/services/<svc>/)
-          # but go.work is at repo root. Without explicit GOWORK, Go can't resolve
-          # cross-module imports (shared/proto/auth) causing typecheck failures.
-          GOWORK: ${{ github.workspace }}/go.work
         with:
           # RULE-CI-005: golangci-lint v2.x supports Go 1.25+.
           version: v2.12.2
-          working-directory: backend/services/${{ matrix.service }}
-          # RULE-CI-006: Path from backend/services/<svc>/ to repo root = ../../../
-          args: --config=../../../.golangci.yml --timeout 5m
+          # RULE-CI-014: Run from REPO ROOT (where go.work lives), NOT from
+          #   service subdirectory. golangci-lint's internal type checker cannot
+          #   resolve workspace replace directives when running from a subdirectory,
+          #   even with GOWORK set. Running from repo root lets Go find go.work
+          #   naturally and resolve cross-module imports (shared/proto/auth).
+          args: --config=.golangci.yml --timeout 5m ./backend/services/${{ matrix.service }}/...
 
   # ────────────────────────────────────────────────────────────────
   # TEST — AUTH SERVICE
