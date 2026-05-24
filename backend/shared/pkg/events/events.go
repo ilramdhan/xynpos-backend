@@ -215,10 +215,17 @@ const (
 	EventUserInvited     = "user.invited"
 	EventUserRoleChanged = "user.role_changed"
 
+	// Tenant Events
+	EventTenantCreated     = "tenant.created"
+	EventTenantUpdated     = "tenant.updated"
+	EventTenantUserInvited = "tenant.user.invited"
+	EventTenantUserJoined  = "tenant.user.joined"
+	EventTenantUserRemoved = "tenant.user.removed"
+
 	// Subscription Events
-	EventSubscriptionPlanChanged    = "subscription.plan_changed"
-	EventSubscriptionPaymentFailed  = "subscription.payment_failed"
-	EventSubscriptionTrialEnding    = "subscription.trial_ending"
+	EventSubscriptionPlanChanged   = "subscription.plan_changed"
+	EventSubscriptionPaymentFailed = "subscription.payment_failed"
+	EventSubscriptionTrialEnding   = "subscription.trial_ending"
 
 	// Customer Events
 	EventCustomerDataErased = "customer.data_erased"
