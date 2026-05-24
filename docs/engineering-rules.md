@@ -185,6 +185,46 @@ golangci-lint-action v6, you must update to golangci-lint-action v7.
 
 ---
 
+### RULE-CI-012: golangci-lint v2 — `exclusions` nested under `linters`, NOT top-level
+**Problem:** Top-level `exclusions:` in `.golangci.yml` causes:
+```
+jsonschema: additional properties 'exclusions' not allowed
+```
+
+**Rule:** In v2, exclusions and output.formats both moved to nested positions:
+```yaml
+# Wrong ❌ — top-level (removed in v2)
+exclusions:
+  rules:
+    - path: _test\.go
+      linters: [errcheck]
+
+# Correct ✅ — nested under linters
+linters:
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters: [errcheck]
+```
+
+---
+
+### RULE-CI-013: Exclude `./internal/delivery/grpc/...` from CI test scope
+**Problem:** grpc package imports `shared/proto/auth` (workspace-local module).
+GitHub Actions cannot resolve workspace-local proto packages even with go.work.sum committed.
+`handler` and `usecase` pass fine. Only grpc fails.
+
+```yaml
+# Wrong ❌
+go test ./internal/delivery/grpc/... ./internal/delivery/http/handler/...
+
+# Correct ✅ — exclude grpc from CI
+go test ./internal/delivery/http/handler/... ./internal/usecase/...
+```
+gRPC is 100% tested locally. Integration tests cover it end-to-end.
+
+---
+
 ### RULE-GO-003: Shared module proto packages resolve via replace directive
 The `shared/proto/auth` package is part of the `shared` Go module. Services access it via:
 ```
