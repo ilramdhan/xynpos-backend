@@ -1,0 +1,5 @@
+DROP TABLE IF EXISTS invitations;
+DROP TABLE IF EXISTS tenant_users;
+DROP TABLE IF EXISTS roles;
+DROP TABLE IF EXISTS outlets;
+DROP TABLE IF EXISTS tenants;

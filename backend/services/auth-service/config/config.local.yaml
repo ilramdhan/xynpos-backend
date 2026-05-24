@@ -1,0 +1,35 @@
+# XynPOS Auth Service — Local Development Overrides
+# This file is NOT committed to git if it contains secrets.
+# Copy from config.yaml and adjust values.
+
+app:
+  env: development
+  log_level: debug
+
+database:
+  url: postgres://xynpos:xynpos@localhost:5432/xynpos_auth?sslmode=disable
+  max_open_conns: 10
+  min_open_conns: 2
+  max_idle_time: 5m
+
+redis:
+  url: redis://localhost:6379/0
+  password: ""
+  db: 0
+
+nats:
+  url: nats://localhost:4222
+
+jwt:
+  access_secret: "local_dev_access_secret_32chars!!"
+  refresh_secret: "local_dev_refresh_secret_32chars!"
+  access_expiry: 60m     # longer for dev convenience
+  refresh_expiry: 720h
+  issuer: xynpos.com
+
+tracer:
+  enabled: false         # disable Jaeger locally unless needed
+
+grpc:
+  port: "8002"
+  tenant_service_addr: "localhost:9001"

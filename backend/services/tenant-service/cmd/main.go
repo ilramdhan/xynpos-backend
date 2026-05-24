@@ -11,7 +11,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gofiber/contrib/swagger"
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/cors"
 	"github.com/gofiber/fiber/v3/middleware/helmet"
@@ -19,14 +18,12 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 
-	_ "github.com/extendedsynaptic/xynpos/auth-service/docs" // Swagger docs
+	_ "github.com/extendedsynaptic/xynpos/tenant-service/docs" // Swagger docs
 
-	"github.com/extendedsynaptic/xynpos/auth-service/internal/delivery/http/handler"
-	grpcdelivery "github.com/extendedsynaptic/xynpos/auth-service/internal/delivery/grpc"
-	"github.com/extendedsynaptic/xynpos/auth-service/internal/domain"
-	"github.com/extendedsynaptic/xynpos/auth-service/internal/event"
-	repopg "github.com/extendedsynaptic/xynpos/auth-service/internal/repository/postgres"
-	"github.com/extendedsynaptic/xynpos/auth-service/internal/usecase"
+	"github.com/extendedsynaptic/xynpos/tenant-service/internal/delivery/http/handler"
+	"github.com/extendedsynaptic/xynpos/tenant-service/internal/event"
+	repopg "github.com/extendedsynaptic/xynpos/tenant-service/internal/repository/postgres"
+	"github.com/extendedsynaptic/xynpos/tenant-service/internal/usecase"
 	"github.com/extendedsynaptic/xynpos/shared/pkg/config"
 	"github.com/extendedsynaptic/xynpos/shared/pkg/database"
 	appevents "github.com/extendedsynaptic/xynpos/shared/pkg/events"
@@ -37,14 +34,12 @@ import (
 	"github.com/extendedsynaptic/xynpos/shared/pkg/middleware"
 	appredis "github.com/extendedsynaptic/xynpos/shared/pkg/redis"
 	"github.com/extendedsynaptic/xynpos/shared/pkg/tracer"
-	authpb "github.com/extendedsynaptic/xynpos/shared/proto/auth"
-	"github.com/google/uuid"
 )
 
-// @title           XynPOS Auth Service API
+// @title           XynPOS Tenant Service API
 // @version         1.0
-// @description     Authentication and Authorization service for XynPOS
-// @host            localhost:8001
+// @description     Tenant and outlet management service for XynPOS
+// @host            localhost:9000
 // @BasePath        /
 // @securityDefinitions.apikey BearerAuth
 // @in header
@@ -60,14 +55,14 @@ func main() {
 	ctx := context.Background()
 
 	// ── Load config ────────────────────────────────────────────
-	cfg := config.MustLoad("auth-service")
+	cfg := config.MustLoad("tenant-service")
 
 	// ── Logger ─────────────────────────────────────────────────
 	log := logger.New(cfg.App.LogLevel, cfg.App.Env)
 	defer log.Sync() //nolint:errcheck
 	zap.ReplaceGlobals(log)
 
-	log.Info("Starting auth-service",
+	log.Info("Starting tenant-service",
 		zap.String("version", Version),
 		zap.String("build_time", BuildTime),
 		zap.String("env", cfg.App.Env),
@@ -75,7 +70,7 @@ func main() {
 
 	// ── Tracer ─────────────────────────────────────────────────
 	tracerShutdown, err := tracer.Init(ctx, tracer.Config{
-		ServiceName: "auth-service",
+		ServiceName: "tenant-service",
 		Environment: cfg.App.Env,
 		JaegerURL:   cfg.Tracer.JaegerURL,
 		Enabled:     cfg.Tracer.Enabled,
@@ -118,7 +113,7 @@ func main() {
 	}
 	defer natsClient.Close()
 
-	// ── JWT Manager ────────────────────────────────────────────
+	// ── JWT Manager (for auth middleware) ──────────────────────
 	jwtMgr := appjwt.New(appjwt.Config{
 		AccessSecret:  cfg.JWT.AccessSecret,
 		RefreshSecret: cfg.JWT.RefreshSecret,
@@ -128,34 +123,36 @@ func main() {
 	})
 
 	// ── Metrics ────────────────────────────────────────────────
-	svcMetrics := metrics.New("auth_service")
+	svcMetrics := metrics.New("tenant_service")
 
 	// ── Wire dependencies ──────────────────────────────────────
-	userRepo := repopg.NewUserRepository(db)
-	tokenRepo := repopg.NewRefreshTokenRepository(db)
-	otpRepo := repopg.NewOTPRepository(db)
+	tenantRepo := repopg.NewTenantRepository(db)
+	outletRepo := repopg.NewOutletRepository(db)
+	memberRepo := repopg.NewTenantUserRepository(db)
+	roleRepo := repopg.NewRoleRepository(db)
+	inviteRepo := repopg.NewInvitationRepository(db)
 	evtPublisher := event.NewPublisher(natsClient)
 
-	authUC := usecase.New(
-		userRepo, tokenRepo, otpRepo, jwtMgr,
-		evtPublisher, &stubTenantClient{},
-		usecase.AuthUsecaseConfig{
-			OTPExpiryMinutes:   10,
-			MaxOTPPerHour:      5,
-			RefreshTokenExpiry: cfg.JWT.RefreshExpiry,
-		},
+	tenantUC := usecase.New(
+		db, // *gorm.DB for schema provisioning
+		tenantRepo,
+		outletRepo,
+		memberRepo,
+		roleRepo,
+		inviteRepo,
+		evtPublisher,
 	)
 
-	authHandler := handler.NewAuthHandler(authUC)
+	tenantHandler := handler.NewTenantHandler(tenantUC)
 
 	// ── Fiber App ──────────────────────────────────────────────
 	port, _ := strconv.Atoi(cfg.App.Port)
 	if port == 0 {
-		port = 8001
+		port = 9000
 	}
 
 	app := fiber.New(fiber.Config{
-		AppName:      "auth-service v" + Version,
+		AppName:      "tenant-service v" + Version,
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  60 * time.Second,
@@ -171,29 +168,21 @@ func main() {
 	app.Use(middleware.RecoverPanic())
 	app.Use(requestid.New())
 	app.Use(logger.FiberMiddleware(log))
-	app.Use(tracer.FiberMiddleware("auth-service"))
+	app.Use(tracer.FiberMiddleware("tenant-service"))
 	app.Use(svcMetrics.FiberMiddleware())
 	app.Use(helmet.New())
 	app.Use(cors.New(cors.Config{
 		AllowOrigins: []string{"*"},
-		AllowHeaders: []string{"Authorization", "Content-Type", "X-Request-ID", "X-Idempotency-Key"},
+		AllowHeaders: []string{"Authorization", "Content-Type", "X-Request-ID", "X-Internal-Key"},
 		AllowMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 	}))
 
 	// ── Routes ─────────────────────────────────────────────────
 	authMW := middleware.RequireAuth(jwtMgr)
-	authHandler.Register(app, authMW)
-
-	// Swagger UI
-	app.Use(swagger.New(swagger.Config{
-		BasePath: "/",
-		FilePath: "./docs/swagger.json",
-		Path:     "docs",
-		Title:    "XynPOS Auth Service — API Docs",
-	}))
+	tenantHandler.Register(app, authMW)
 
 	// Health checks
-	healthHandler := health.New("auth-service", db, rdb)
+	healthHandler := health.New("tenant-service", db, rdb)
 	healthHandler.Register(app)
 
 	// ── Metrics HTTP server (internal) ─────────────────────────
@@ -206,16 +195,12 @@ func main() {
 		_ = srv.ListenAndServe()
 	}()
 
-	// ── gRPC Server ────────────────────────────────────────────
+	// ── gRPC Server (for future internal calls) ─────────────────
 	grpcServer := grpc.NewServer(
 		grpc.ChainUnaryInterceptor(
 			tracer.UnaryServerInterceptor(),
 		),
 	)
-	// Register auth gRPC service
-	authGRPCServer := grpcdelivery.NewAuthServer(authUC, log)
-	authpb.RegisterAuthServiceServer(grpcServer, authGRPCServer)
-	
 	go func() {
 		grpcPort := cfg.GRPC.Port
 		if grpcPort == "" {
@@ -252,14 +237,5 @@ func main() {
 
 	grpcServer.GracefulStop()
 	_ = app.ShutdownWithContext(shutdownCtx)
-	log.Info("auth-service stopped gracefully")
-}
-
-// stubTenantClient is a placeholder until tenant-service is built.
-// Implements usecase.TenantServiceClient.
-type stubTenantClient struct{}
-
-func (s *stubTenantClient) CreateTenant(ctx context.Context, ownerUserID uuid.UUID, input domain.RegisterInput) (uuid.UUID, error) {
-	// Returns a fixed tenant ID for local development without tenant-service
-	return uuid.MustParse("00000000-0000-0000-0000-000000000001"), nil
+	log.Info("tenant-service stopped gracefully")
 }

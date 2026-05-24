@@ -155,9 +155,9 @@ type CreateOutletInput struct {
 
 // InviteUserInput holds data to invite a user to a tenant.
 type InviteUserInput struct {
-	Email    string    `json:"email" validate:"required,email"`
-	RoleID   uuid.UUID `json:"role_id" validate:"required,uuid4"`
-	OutletID *uuid.UUID `json:"outlet_id" validate:"omitempty,uuid4"`
+	Email    string     `json:"email" validate:"required,email"`
+	RoleID   uuid.UUID  `json:"role_id" validate:"required"`
+	OutletID *uuid.UUID `json:"outlet_id" validate:"omitempty"`
 }
 
 // ──────────────────────────────────────────────

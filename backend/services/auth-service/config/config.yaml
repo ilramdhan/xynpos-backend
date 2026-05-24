@@ -1,0 +1,44 @@
+# XynPOS Auth Service — Config
+
+# App
+app:
+  name: auth-service
+  port: "8001"
+  env: production          # production | staging | development
+  log_level: info          # debug | info | warn | error
+
+# Database (PostgreSQL 18)
+database:
+  url: ${DATABASE_URL}     # postgres://user:pass@host:5432/xynpos_auth?sslmode=require
+  max_open_conns: 25
+  min_open_conns: 5
+  max_idle_time: 15m
+
+# Redis
+redis:
+  url: ${REDIS_URL}        # redis://:pass@host:6379/0
+  password: ${REDIS_PASSWORD}
+  db: 0
+
+# NATS JetStream
+nats:
+  url: ${NATS_URL}         # nats://host:4222
+  stream_name: XYNPOS_EVENTS
+
+# JWT
+jwt:
+  access_secret: ${JWT_ACCESS_SECRET}   # min 32 chars
+  refresh_secret: ${JWT_REFRESH_SECRET} # min 32 chars
+  access_expiry: 15m
+  refresh_expiry: 720h     # 30 days
+  issuer: xynpos.com
+
+# OpenTelemetry / Jaeger
+tracer:
+  enabled: true
+  jaeger_url: ${JAEGER_ENDPOINT}   # http://jaeger:14268/api/traces
+
+# gRPC (internal)
+grpc:
+  port: "8002"             # HTTP port + 1
+  tenant_service_addr: ${TENANT_SERVICE_GRPC_ADDR}  # tenant-service:9001

@@ -1,0 +1,481 @@
+basePath: /
+definitions:
+  github_com_extendedsynaptic_xynpos_tenant-service_internal_domain.BusinessType:
+    enum:
+    - retail
+    - fnb
+    - service
+    - cafe
+    - restaurant
+    - general
+    type: string
+    x-enum-varnames:
+    - BusinessTypeRetail
+    - BusinessTypeFnB
+    - BusinessTypeService
+    - BusinessTypeCafe
+    - BusinessTypeRestaurant
+    - BusinessTypeGeneral
+  github_com_extendedsynaptic_xynpos_tenant-service_internal_domain.CreateOutletInput:
+    properties:
+      address:
+        maxLength: 500
+        type: string
+      city:
+        maxLength: 100
+        type: string
+      close_time:
+        type: string
+      code:
+        maxLength: 20
+        minLength: 1
+        type: string
+      name:
+        maxLength: 200
+        minLength: 2
+        type: string
+      open_time:
+        type: string
+      phone:
+        type: string
+      province:
+        maxLength: 100
+        type: string
+      service_charge:
+        maximum: 1
+        minimum: 0
+        type: number
+      tax_included:
+        type: boolean
+      tax_rate:
+        maximum: 1
+        minimum: 0
+        type: number
+    required:
+    - code
+    - name
+    type: object
+  github_com_extendedsynaptic_xynpos_tenant-service_internal_domain.CreateTenantInput:
+    properties:
+      business_name:
+        maxLength: 200
+        minLength: 2
+        type: string
+      business_type:
+        allOf:
+        - $ref: '#/definitions/github_com_extendedsynaptic_xynpos_tenant-service_internal_domain.BusinessType'
+        enum:
+        - retail
+        - fnb
+        - service
+        - cafe
+        - restaurant
+        - general
+      owner_user_id:
+        type: string
+    required:
+    - business_name
+    - business_type
+    - owner_user_id
+    type: object
+  github_com_extendedsynaptic_xynpos_tenant-service_internal_domain.InviteUserInput:
+    properties:
+      email:
+        type: string
+      outlet_id:
+        type: string
+      role_id:
+        type: string
+    required:
+    - email
+    - role_id
+    type: object
+  github_com_extendedsynaptic_xynpos_tenant-service_internal_domain.UpdateTenantInput:
+    properties:
+      address:
+        maxLength: 500
+        type: string
+      city:
+        maxLength: 100
+        type: string
+      logo_url:
+        type: string
+      name:
+        maxLength: 200
+        minLength: 2
+        type: string
+      province:
+        maxLength: 100
+        type: string
+      timezone:
+        type: string
+      website:
+        type: string
+    type: object
+  response.ErrorBody:
+    properties:
+      code:
+        type: string
+      details:
+        items:
+          $ref: '#/definitions/response.ValidationError'
+        type: array
+      http_status:
+        type: integer
+      message:
+        type: string
+    type: object
+  response.ErrorResponse:
+    properties:
+      error:
+        $ref: '#/definitions/response.ErrorBody'
+      success:
+        type: boolean
+    type: object
+  response.SuccessResponse:
+    properties:
+      data: {}
+      success:
+        type: boolean
+    type: object
+  response.ValidationError:
+    properties:
+      field:
+        type: string
+      message:
+        type: string
+      value:
+        type: string
+    type: object
+host: localhost:9000
+info:
+  contact: {}
+  description: Tenant and outlet management service for XynPOS
+  title: XynPOS Tenant Service API
+  version: "1.0"
+paths:
+  /internal/tenants:
+    post:
+      consumes:
+      - application/json
+      description: Called by auth-service on user registration. Protected by internal
+        API key.
+      parameters:
+      - description: Tenant data
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_extendedsynaptic_xynpos_tenant-service_internal_domain.CreateTenantInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/response.SuccessResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      summary: Create tenant (internal)
+      tags:
+      - Internal
+  /v1/tenants/{tenant_id}:
+    get:
+      parameters:
+      - description: Tenant UUID
+        in: path
+        name: tenant_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.SuccessResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get tenant by ID
+      tags:
+      - Tenants
+    patch:
+      consumes:
+      - application/json
+      parameters:
+      - description: Tenant UUID
+        in: path
+        name: tenant_id
+        required: true
+        type: string
+      - description: Update data
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_extendedsynaptic_xynpos_tenant-service_internal_domain.UpdateTenantInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.SuccessResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Update tenant profile
+      tags:
+      - Tenants
+  /v1/tenants/{tenant_id}/invitations:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Tenant UUID
+        in: path
+        name: tenant_id
+        required: true
+        type: string
+      - description: Invitation data
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_extendedsynaptic_xynpos_tenant-service_internal_domain.InviteUserInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.SuccessResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Invite user to tenant
+      tags:
+      - Members
+  /v1/tenants/{tenant_id}/members:
+    get:
+      parameters:
+      - description: Tenant UUID
+        in: path
+        name: tenant_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.SuccessResponse'
+      security:
+      - BearerAuth: []
+      summary: List tenant members
+      tags:
+      - Members
+  /v1/tenants/{tenant_id}/members/{user_id}:
+    delete:
+      parameters:
+      - description: Tenant UUID
+        in: path
+        name: tenant_id
+        required: true
+        type: string
+      - description: User UUID to remove
+        in: path
+        name: user_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.SuccessResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Remove member
+      tags:
+      - Members
+  /v1/tenants/{tenant_id}/outlets:
+    get:
+      parameters:
+      - description: Tenant UUID
+        in: path
+        name: tenant_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.SuccessResponse'
+      security:
+      - BearerAuth: []
+      summary: List outlets
+      tags:
+      - Outlets
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Tenant UUID
+        in: path
+        name: tenant_id
+        required: true
+        type: string
+      - description: Outlet data
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_extendedsynaptic_xynpos_tenant-service_internal_domain.CreateOutletInput'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/response.SuccessResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Create outlet
+      tags:
+      - Outlets
+  /v1/tenants/{tenant_id}/outlets/{outlet_id}:
+    delete:
+      parameters:
+      - description: Tenant UUID
+        in: path
+        name: tenant_id
+        required: true
+        type: string
+      - description: Outlet UUID
+        in: path
+        name: outlet_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.SuccessResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Delete outlet
+      tags:
+      - Outlets
+    patch:
+      consumes:
+      - application/json
+      parameters:
+      - description: Tenant UUID
+        in: path
+        name: tenant_id
+        required: true
+        type: string
+      - description: Outlet UUID
+        in: path
+        name: outlet_id
+        required: true
+        type: string
+      - description: Outlet data
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_extendedsynaptic_xynpos_tenant-service_internal_domain.CreateOutletInput'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.SuccessResponse'
+      security:
+      - BearerAuth: []
+      summary: Update outlet
+      tags:
+      - Outlets
+  /v1/tenants/{tenant_id}/roles:
+    get:
+      parameters:
+      - description: Tenant UUID
+        in: path
+        name: tenant_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.SuccessResponse'
+      security:
+      - BearerAuth: []
+      summary: List roles
+      tags:
+      - Roles
+  /v1/tenants/me:
+    get:
+      description: Returns all tenants the authenticated user belongs to.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.SuccessResponse'
+      security:
+      - BearerAuth: []
+      summary: Get my tenants
+      tags:
+      - Tenants
+securityDefinitions:
+  BearerAuth:
+    description: 'Enter: Bearer <token>'
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

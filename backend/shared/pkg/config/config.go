@@ -15,6 +15,7 @@ type Config struct {
 	Redis    RedisConfig
 	NATS     NATSConfig
 	JWT      JWTConfig
+	GRPC     GRPCConfig
 	Storage  StorageConfig
 	Email    EmailConfig
 	FCM      FCMConfig
@@ -85,6 +86,13 @@ type TracerConfig struct {
 type WorkerConfig struct {
 	RedisURL    string `mapstructure:"REDIS_URL"`
 	Concurrency int    `mapstructure:"WORKER_CONCURRENCY"`
+}
+
+// GRPCConfig holds addresses for inter-service gRPC communication.
+type GRPCConfig struct {
+	Port              string `mapstructure:"GRPC_PORT"`              // This service's gRPC port
+	TenantServiceAddr string `mapstructure:"TENANT_SERVICE_GRPC_ADDR"` // e.g. tenant-service:9001
+	AuthServiceAddr   string `mapstructure:"AUTH_SERVICE_GRPC_ADDR"`   // e.g. auth-service:8002
 }
 
 // Load reads configuration from environment variables and optional .env file.
@@ -193,6 +201,15 @@ func Load(serviceName string) (*Config, error) {
 	cfg.Worker = WorkerConfig{
 		RedisURL:    v.GetString("REDIS_URL"),
 		Concurrency: v.GetInt("WORKER_CONCURRENCY"),
+	}
+
+	v.SetDefault("GRPC_PORT", "")
+	v.SetDefault("TENANT_SERVICE_GRPC_ADDR", "tenant-service:9001")
+	v.SetDefault("AUTH_SERVICE_GRPC_ADDR", "auth-service:8002")
+	cfg.GRPC = GRPCConfig{
+		Port:              v.GetString("GRPC_PORT"),
+		TenantServiceAddr: v.GetString("TENANT_SERVICE_GRPC_ADDR"),
+		AuthServiceAddr:   v.GetString("AUTH_SERVICE_GRPC_ADDR"),
 	}
 
 	return cfg, nil

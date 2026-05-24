@@ -15,13 +15,9 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
-        "/v1/auth/change-password": {
+        "/internal/tenants": {
             "post": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
+                "description": "Called by auth-service on user registration. Protected by internal API key.",
                 "consumes": [
                     "application/json"
                 ],
@@ -29,95 +25,29 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "Auth"
+                    "Internal"
                 ],
-                "summary": "Change user password",
+                "summary": "Create tenant (internal)",
                 "parameters": [
                     {
-                        "description": "Old and new password",
+                        "description": "Tenant data",
                         "name": "body",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/github_com_extendedsynaptic_xynpos_auth-service_internal_domain.ChangePasswordInput"
+                            "$ref": "#/definitions/github_com_extendedsynaptic_xynpos_tenant-service_internal_domain.CreateTenantInput"
                         }
                     }
                 ],
                 "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/response.SuccessResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/v1/auth/forgot-password": {
-            "post": {
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Auth"
-                ],
-                "summary": "Request password reset OTP",
-                "parameters": [
-                    {
-                        "description": "Email address",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/github_com_extendedsynaptic_xynpos_auth-service_internal_domain.ForgotPasswordInput"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/response.SuccessResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/v1/auth/login": {
-            "post": {
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Auth"
-                ],
-                "summary": "Login with email and password",
-                "parameters": [
-                    {
-                        "description": "Login credentials",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/github_com_extendedsynaptic_xynpos_auth-service_internal_domain.LoginInput"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
+                    "201": {
+                        "description": "Created",
                         "schema": {
                             "$ref": "#/definitions/response.SuccessResponse"
                         }
                     },
-                    "401": {
-                        "description": "Unauthorized",
+                    "400": {
+                        "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -125,34 +55,21 @@ const docTemplate = `{
                 }
             }
         },
-        "/v1/auth/logout": {
-            "post": {
+        "/v1/tenants/me": {
+            "get": {
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "consumes": [
-                    "application/json"
-                ],
+                "description": "Returns all tenants the authenticated user belongs to.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "Auth"
+                    "Tenants"
                 ],
-                "summary": "Logout and revoke refresh token",
-                "parameters": [
-                    {
-                        "description": "Refresh token to revoke",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/github_com_extendedsynaptic_xynpos_auth-service_internal_domain.RefreshInput"
-                        }
-                    }
-                ],
+                "summary": "Get my tenants",
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -163,7 +80,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/v1/auth/me": {
+        "/v1/tenants/{tenant_id}": {
             "get": {
                 "security": [
                     {
@@ -174,14 +91,35 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "Auth"
+                    "Tenants"
                 ],
-                "summary": "Get current user profile",
+                "summary": "Get tenant by ID",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Tenant UUID",
+                        "name": "tenant_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/response.SuccessResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
                         }
                     }
                 }
@@ -199,50 +137,24 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "Auth"
+                    "Tenants"
                 ],
-                "summary": "Update user profile",
+                "summary": "Update tenant profile",
                 "parameters": [
                     {
-                        "description": "Profile fields to update",
+                        "type": "string",
+                        "description": "Tenant UUID",
+                        "name": "tenant_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Update data",
                         "name": "body",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/github_com_extendedsynaptic_xynpos_auth-service_internal_domain.UpdateProfileInput"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/response.SuccessResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/v1/auth/refresh": {
-            "post": {
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Auth"
-                ],
-                "summary": "Refresh access token",
-                "parameters": [
-                    {
-                        "description": "Refresh token",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/github_com_extendedsynaptic_xynpos_auth-service_internal_domain.RefreshInput"
+                            "$ref": "#/definitions/github_com_extendedsynaptic_xynpos_tenant-service_internal_domain.UpdateTenantInput"
                         }
                     }
                 ],
@@ -253,8 +165,8 @@ const docTemplate = `{
                             "$ref": "#/definitions/response.SuccessResponse"
                         }
                     },
-                    "401": {
-                        "description": "Unauthorized",
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -262,8 +174,13 @@ const docTemplate = `{
                 }
             }
         },
-        "/v1/auth/register": {
+        "/v1/tenants/{tenant_id}/invitations": {
             "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "consumes": [
                     "application/json"
                 ],
@@ -271,95 +188,24 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "Auth"
+                    "Members"
                 ],
-                "summary": "Register new tenant and owner account",
+                "summary": "Invite user to tenant",
                 "parameters": [
                     {
-                        "description": "Registration data",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/github_com_extendedsynaptic_xynpos_auth-service_internal_domain.RegisterInput"
-                        }
-                    }
-                ],
-                "responses": {
-                    "201": {
-                        "description": "Created",
-                        "schema": {
-                            "$ref": "#/definitions/response.SuccessResponse"
-                        }
+                        "type": "string",
+                        "description": "Tenant UUID",
+                        "name": "tenant_id",
+                        "in": "path",
+                        "required": true
                     },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    },
-                    "409": {
-                        "description": "Conflict",
-                        "schema": {
-                            "$ref": "#/definitions/response.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/v1/auth/resend-otp": {
-            "post": {
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Auth"
-                ],
-                "summary": "Resend OTP code",
-                "parameters": [
                     {
-                        "description": "Email and OTP type",
+                        "description": "Invitation data",
                         "name": "body",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/github_com_extendedsynaptic_xynpos_auth-service_internal_domain.ResendOTPInput"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/response.SuccessResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/v1/auth/reset-password": {
-            "post": {
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Auth"
-                ],
-                "summary": "Reset password using OTP",
-                "parameters": [
-                    {
-                        "description": "OTP and new password",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/github_com_extendedsynaptic_xynpos_auth-service_internal_domain.ResetPasswordInput"
+                            "$ref": "#/definitions/github_com_extendedsynaptic_xynpos_tenant-service_internal_domain.InviteUserInput"
                         }
                     }
                 ],
@@ -370,8 +216,8 @@ const docTemplate = `{
                             "$ref": "#/definitions/response.SuccessResponse"
                         }
                     },
-                    "400": {
-                        "description": "Bad Request",
+                    "422": {
+                        "description": "Unprocessable Entity",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
                         }
@@ -379,7 +225,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/v1/auth/sessions": {
+        "/v1/tenants/{tenant_id}/members": {
             "get": {
                 "security": [
                     {
@@ -390,38 +236,14 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "Auth"
+                    "Members"
                 ],
-                "summary": "List active sessions",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/response.SuccessResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/v1/auth/sessions/{session_id}": {
-            "delete": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Auth"
-                ],
-                "summary": "Revoke a specific session",
+                "summary": "List tenant members",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Session ID",
-                        "name": "session_id",
+                        "description": "Tenant UUID",
+                        "name": "tenant_id",
                         "in": "path",
                         "required": true
                     }
@@ -436,7 +258,84 @@ const docTemplate = `{
                 }
             }
         },
-        "/v1/auth/verify-email": {
+        "/v1/tenants/{tenant_id}/members/{user_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Members"
+                ],
+                "summary": "Remove member",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Tenant UUID",
+                        "name": "tenant_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "User UUID to remove",
+                        "name": "user_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.SuccessResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/tenants/{tenant_id}/outlets": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Outlets"
+                ],
+                "summary": "List outlets",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Tenant UUID",
+                        "name": "tenant_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.SuccessResponse"
+                        }
+                    }
+                }
+            },
             "post": {
                 "security": [
                     {
@@ -450,18 +349,77 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "Auth"
+                    "Outlets"
                 ],
-                "summary": "Verify email with OTP",
+                "summary": "Create outlet",
                 "parameters": [
                     {
-                        "description": "OTP code",
+                        "type": "string",
+                        "description": "Tenant UUID",
+                        "name": "tenant_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Outlet data",
                         "name": "body",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/github_com_extendedsynaptic_xynpos_auth-service_internal_domain.VerifyEmailInput"
+                            "$ref": "#/definitions/github_com_extendedsynaptic_xynpos_tenant-service_internal_domain.CreateOutletInput"
                         }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/response.SuccessResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/tenants/{tenant_id}/outlets/{outlet_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Outlets"
+                ],
+                "summary": "Delete outlet",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Tenant UUID",
+                        "name": "tenant_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Outlet UUID",
+                        "name": "outlet_id",
+                        "in": "path",
+                        "required": true
                     }
                 ],
                 "responses": {
@@ -471,10 +429,93 @@ const docTemplate = `{
                             "$ref": "#/definitions/response.SuccessResponse"
                         }
                     },
-                    "400": {
-                        "description": "Bad Request",
+                    "403": {
+                        "description": "Forbidden",
                         "schema": {
                             "$ref": "#/definitions/response.ErrorResponse"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Outlets"
+                ],
+                "summary": "Update outlet",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Tenant UUID",
+                        "name": "tenant_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Outlet UUID",
+                        "name": "outlet_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Outlet data",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/github_com_extendedsynaptic_xynpos_tenant-service_internal_domain.CreateOutletInput"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.SuccessResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/tenants/{tenant_id}/roles": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Roles"
+                ],
+                "summary": "List roles",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Tenant UUID",
+                        "name": "tenant_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/response.SuccessResponse"
                         }
                     }
                 }
@@ -482,85 +523,84 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "github_com_extendedsynaptic_xynpos_auth-service_internal_domain.ChangePasswordInput": {
-            "type": "object",
-            "required": [
-                "new_password",
-                "old_password"
-            ],
-            "properties": {
-                "new_password": {
-                    "type": "string",
-                    "maxLength": 72,
-                    "minLength": 8
-                },
-                "old_password": {
-                    "type": "string"
-                }
-            }
-        },
-        "github_com_extendedsynaptic_xynpos_auth-service_internal_domain.ForgotPasswordInput": {
-            "type": "object",
-            "required": [
-                "email"
-            ],
-            "properties": {
-                "email": {
-                    "type": "string"
-                }
-            }
-        },
-        "github_com_extendedsynaptic_xynpos_auth-service_internal_domain.LoginInput": {
-            "type": "object",
-            "required": [
-                "email",
-                "password"
-            ],
-            "properties": {
-                "device_id": {
-                    "type": "string"
-                },
-                "device_name": {
-                    "type": "string"
-                },
-                "email": {
-                    "type": "string"
-                },
-                "password": {
-                    "type": "string"
-                }
-            }
-        },
-        "github_com_extendedsynaptic_xynpos_auth-service_internal_domain.OTPType": {
+        "github_com_extendedsynaptic_xynpos_tenant-service_internal_domain.BusinessType": {
             "type": "string",
             "enum": [
-                "email_verification",
-                "password_reset"
+                "retail",
+                "fnb",
+                "service",
+                "cafe",
+                "restaurant",
+                "general"
             ],
             "x-enum-varnames": [
-                "OTPTypeEmailVerification",
-                "OTPTypePasswordReset"
+                "BusinessTypeRetail",
+                "BusinessTypeFnB",
+                "BusinessTypeService",
+                "BusinessTypeCafe",
+                "BusinessTypeRestaurant",
+                "BusinessTypeGeneral"
             ]
         },
-        "github_com_extendedsynaptic_xynpos_auth-service_internal_domain.RefreshInput": {
+        "github_com_extendedsynaptic_xynpos_tenant-service_internal_domain.CreateOutletInput": {
             "type": "object",
             "required": [
-                "refresh_token"
+                "code",
+                "name"
             ],
             "properties": {
-                "refresh_token": {
+                "address": {
+                    "type": "string",
+                    "maxLength": 500
+                },
+                "city": {
+                    "type": "string",
+                    "maxLength": 100
+                },
+                "close_time": {
                     "type": "string"
+                },
+                "code": {
+                    "type": "string",
+                    "maxLength": 20,
+                    "minLength": 1
+                },
+                "name": {
+                    "type": "string",
+                    "maxLength": 200,
+                    "minLength": 2
+                },
+                "open_time": {
+                    "type": "string"
+                },
+                "phone": {
+                    "type": "string"
+                },
+                "province": {
+                    "type": "string",
+                    "maxLength": 100
+                },
+                "service_charge": {
+                    "type": "number",
+                    "maximum": 1,
+                    "minimum": 0
+                },
+                "tax_included": {
+                    "type": "boolean"
+                },
+                "tax_rate": {
+                    "type": "number",
+                    "maximum": 1,
+                    "minimum": 0
                 }
             }
         },
-        "github_com_extendedsynaptic_xynpos_auth-service_internal_domain.RegisterInput": {
+        "github_com_extendedsynaptic_xynpos_tenant-service_internal_domain.CreateTenantInput": {
             "type": "object",
             "required": [
                 "business_name",
                 "business_type",
-                "email",
-                "name",
-                "password"
+                "owner_user_id"
             ],
             "properties": {
                 "business_name": {
@@ -569,7 +609,6 @@ const docTemplate = `{
                     "minLength": 2
                 },
                 "business_type": {
-                    "type": "string",
                     "enum": [
                         "retail",
                         "fnb",
@@ -577,93 +616,63 @@ const docTemplate = `{
                         "cafe",
                         "restaurant",
                         "general"
-                    ]
-                },
-                "email": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string",
-                    "maxLength": 100,
-                    "minLength": 2
-                },
-                "password": {
-                    "type": "string",
-                    "maxLength": 72,
-                    "minLength": 8
-                },
-                "phone": {
-                    "type": "string"
-                }
-            }
-        },
-        "github_com_extendedsynaptic_xynpos_auth-service_internal_domain.ResendOTPInput": {
-            "type": "object",
-            "required": [
-                "email",
-                "type"
-            ],
-            "properties": {
-                "email": {
-                    "type": "string"
-                },
-                "type": {
-                    "enum": [
-                        "email_verification",
-                        "password_reset"
                     ],
                     "allOf": [
                         {
-                            "$ref": "#/definitions/github_com_extendedsynaptic_xynpos_auth-service_internal_domain.OTPType"
+                            "$ref": "#/definitions/github_com_extendedsynaptic_xynpos_tenant-service_internal_domain.BusinessType"
                         }
                     ]
+                },
+                "owner_user_id": {
+                    "type": "string"
                 }
             }
         },
-        "github_com_extendedsynaptic_xynpos_auth-service_internal_domain.ResetPasswordInput": {
+        "github_com_extendedsynaptic_xynpos_tenant-service_internal_domain.InviteUserInput": {
             "type": "object",
             "required": [
                 "email",
-                "new_password",
-                "otp"
+                "role_id"
             ],
             "properties": {
                 "email": {
                     "type": "string"
                 },
-                "new_password": {
-                    "type": "string",
-                    "maxLength": 72,
-                    "minLength": 8
+                "outlet_id": {
+                    "type": "string"
                 },
-                "otp": {
+                "role_id": {
                     "type": "string"
                 }
             }
         },
-        "github_com_extendedsynaptic_xynpos_auth-service_internal_domain.UpdateProfileInput": {
+        "github_com_extendedsynaptic_xynpos_tenant-service_internal_domain.UpdateTenantInput": {
             "type": "object",
             "properties": {
-                "avatar_url": {
+                "address": {
+                    "type": "string",
+                    "maxLength": 500
+                },
+                "city": {
+                    "type": "string",
+                    "maxLength": 100
+                },
+                "logo_url": {
                     "type": "string"
                 },
                 "name": {
                     "type": "string",
-                    "maxLength": 100,
+                    "maxLength": 200,
                     "minLength": 2
                 },
-                "phone": {
+                "province": {
+                    "type": "string",
+                    "maxLength": 100
+                },
+                "timezone": {
                     "type": "string"
-                }
-            }
-        },
-        "github_com_extendedsynaptic_xynpos_auth-service_internal_domain.VerifyEmailInput": {
-            "type": "object",
-            "required": [
-                "otp"
-            ],
-            "properties": {
-                "otp": {
+                },
+                "website": {
                     "type": "string"
                 }
             }
@@ -736,11 +745,11 @@ const docTemplate = `{
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
 	Version:          "1.0",
-	Host:             "localhost:8001",
+	Host:             "localhost:9000",
 	BasePath:         "/",
 	Schemes:          []string{},
-	Title:            "XynPOS Auth Service API",
-	Description:      "Authentication and Authorization service for XynPOS",
+	Title:            "XynPOS Tenant Service API",
+	Description:      "Tenant and outlet management service for XynPOS",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
 	LeftDelim:        "{{",
