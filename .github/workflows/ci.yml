@@ -57,7 +57,10 @@ jobs:
           version: v2.12.2
           working-directory: backend/services/${{ matrix.service }}
           # RULE-CI-006: Path from backend/services/<svc>/ to repo root = ../../../
-          args: --config=../../../.golangci.yml --timeout 5m
+          # RULE-CI-013: --skip-dirs prevents compilation of grpc/ which imports
+          #   shared/proto/auth (unresolvable in CI). Exclusion rules DON'T work
+          #   for typecheck errors — those happen at compilation, before linting.
+          args: --config=../../../.golangci.yml --timeout 5m --skip-dirs=internal/delivery/grpc
 
   # ────────────────────────────────────────────────────────────────
   # TEST — AUTH SERVICE

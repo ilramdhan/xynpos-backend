@@ -47,7 +47,8 @@ jobs:
           version: v2.12.2
           working-directory: ${{ env.SERVICE_PATH }}
           # RULE-CI-006: From backend/services/auth-service to repo root = ../../../
-          args: --config=../../../.golangci.yml --timeout=10m
+          # RULE-CI-013: --skip-dirs skips compilation of grpc/ (shared/proto/auth unresolvable in CI)
+          args: --config=../../../.golangci.yml --timeout=10m --skip-dirs=internal/delivery/grpc
 
       - name: Security scan (govulncheck)
         working-directory: ${{ env.SERVICE_PATH }}
