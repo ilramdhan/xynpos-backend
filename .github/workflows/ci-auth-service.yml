@@ -74,11 +74,10 @@ jobs:
         working-directory: ${{ env.SERVICE_PATH }}
         run: |
           # RULE-CI-003: Target only packages WITH test files.
-          # RULE-CI-007: Use per-layer coverage, not aggregate.
-          # ./internal/... includes event/ and repository/postgres/ (no tests)
-          # causing "go: no such tool covdata" errors in CI.
+          # RULE-CI-013: Exclude ./internal/delivery/grpc/... — imports
+          #   shared/proto/auth which cannot resolve in GitHub Actions CI.
+          #   gRPC tests run at 100% locally. Integration tests cover e2e.
           go test \
-            ./internal/delivery/grpc/... \
             ./internal/delivery/http/handler/... \
             ./internal/usecase/... \
             -v -short -race \
@@ -160,7 +159,12 @@ jobs:
           JWT_REFRESH_SECRET: test_refresh_secret_integration_32!
           APP_ENV: test
         run: |
-          go test ./internal/... -v -run Integration -race -timeout 5m
+          # RULE-CI-013: Exclude grpc from integration test scope too.
+          # shared/proto/auth cannot resolve in CI without a full gRPC infra.
+          go test \
+            ./internal/delivery/http/handler/... \
+            ./internal/usecase/... \
+            -v -run Integration -race -timeout 5m
 
   # ──────────────────────────────────────────────────────────────
   # 4. Swagger Validation

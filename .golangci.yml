@@ -6,25 +6,24 @@ run:
   allow-parallel-runners: true
 
 linters:
-  # Default set of linters (replaces the old enable/disable approach in v2)
   default: none
   enable:
-    - errcheck       # Check error return values
-    - govet          # Report suspicious constructs
-    - gosimple       # Simplification suggestions
-    - staticcheck    # Static analysis
-    - unused         # Find unused code
-    - gocritic       # Opinionated code review
-    - misspell       # Spell check
-    - noctx          # Find HTTP requests without context
-    - bodyclose      # Check HTTP response body is closed
-    - gosec          # Security issues
-    - revive         # Replacement for golint
-    - unconvert      # Unnecessary type conversions
-    - unparam        # Unused function parameters
-    - prealloc       # Slice pre-allocation suggestions
-    - copyloopvar    # Replaces exportloopref (since Go1.22)
-    - nilerr         # Incorrect nil error returns
+    - errcheck
+    - govet
+    - gosimple
+    - staticcheck
+    - unused
+    - gocritic
+    - misspell
+    - noctx
+    - bodyclose
+    - gosec
+    - revive
+    - unconvert
+    - unparam
+    - prealloc
+    - copyloopvar
+    - nilerr
 
   settings:
     errcheck:
@@ -57,21 +56,17 @@ linters:
 
 exclusions:
   rules:
-    # Allow errcheck on defers in tests
     - path: _test\.go
       linters:
         - errcheck
         - gocritic
         - gosec
-    # Allow panics in main() and cmd/
     - path: cmd/
       linters:
         - gosec
-    # Ignore generated proto files
     - path: proto/
       linters:
         - all
-    # Generated swagger docs
     - path: docs/
       linters:
         - all
@@ -80,8 +75,18 @@ issues:
   max-issues-per-linter: 50
   max-same-issues: 3
 
+# RULE-CI-012: In golangci-lint v2, output.formats must be a MAP not a slice.
+# Wrong (v1 style / slice):
+#   formats:
+#     - format: colored-line-number
+# Correct (v2 style / map):
+#   formats:
+#     text:
+#       path: stdout
 output:
   formats:
-    - format: colored-line-number
-  print-issued-lines: true
-  print-linter-name: true
+    text:
+      path: stdout
+      print-linter-name: true
+      print-issued-lines: true
+      colors: true
