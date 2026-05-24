@@ -10,8 +10,7 @@ linters:
   enable:
     - errcheck
     - govet
-    - gosimple
-    - staticcheck
+    - staticcheck    # includes gosimple (merged in v2)
     - unused
     - gocritic
     - misspell
