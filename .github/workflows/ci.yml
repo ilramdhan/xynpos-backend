@@ -6,12 +6,16 @@ on:
     paths:
       - 'backend/**'
       - 'go.work'
+      - 'go.work.sum'
+      - '.golangci.yml'
       - '.github/workflows/ci.yml'
   pull_request:
     branches: [main, develop]
     paths:
       - 'backend/**'
       - 'go.work'
+      - 'go.work.sum'
+      - '.golangci.yml'
 
 env:
   # RULE-GO-001: Pin to the ACTUAL minimum version required by dependencies.

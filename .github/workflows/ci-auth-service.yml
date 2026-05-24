@@ -6,12 +6,15 @@ on:
     paths:
       - "backend/services/auth-service/**"
       - "backend/shared/**"
+      - ".golangci.yml"
+      - "go.work.sum"
       - ".github/workflows/ci-auth-service.yml"
   pull_request:
     branches: [main, staging]
     paths:
       - "backend/services/auth-service/**"
       - "backend/shared/**"
+      - ".golangci.yml"
 
 env:
   SERVICE_PATH: backend/services/auth-service
