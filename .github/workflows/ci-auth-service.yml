@@ -72,9 +72,12 @@ jobs:
       - name: Run unit tests
         working-directory: ${{ env.SERVICE_PATH }}
         run: |
+          # RULE: Use -coverpkg to limit coverage to testable layers.
+          # domain/ and repository/ have no unit tests and dilute total coverage.
           go test ./internal/... -v -short -race \
             -coverprofile=coverage.out \
             -covermode=atomic \
+            -coverpkg=./internal/delivery/...,./internal/usecase/... \
             -count=1
 
       - name: Check coverage threshold (>= 70%)
