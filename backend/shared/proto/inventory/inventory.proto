@@ -1,0 +1,76 @@
+syntax = "proto3";
+
+package inventory.v1;
+
+option go_package = "github.com/extendedsynaptic/xynpos/shared/proto/inventory";
+
+// InventoryService provides atomic stock operations for POS checkout.
+service InventoryService {
+  // CheckStock returns current available stock for a product in an outlet.
+  rpc CheckStock(CheckStockRequest) returns (CheckStockResponse);
+
+  // ReserveStock atomically reserves stock for a pending transaction.
+  // Returns a reservation_id with a TTL. Must call DeductStock or ReleaseStock.
+  rpc ReserveStock(ReserveStockRequest) returns (ReserveStockResponse);
+
+  // DeductStock permanently deducts stock after a completed transaction.
+  rpc DeductStock(DeductStockRequest) returns (DeductStockResponse);
+
+  // ReleaseStock releases a reservation (void/timeout).
+  rpc ReleaseStock(ReleaseStockRequest) returns (ReleaseStockResponse);
+}
+
+message CheckStockRequest {
+  string tenant_id  = 1;
+  string outlet_id  = 2;
+  string product_id = 3;
+  string variant_id = 4; // optional
+}
+
+message CheckStockResponse {
+  double available_qty  = 1;
+  double reserved_qty   = 2;
+  bool   is_tracked     = 3; // false = infinite stock (service/non-inventory item)
+}
+
+message StockItem {
+  string product_id = 1;
+  string variant_id = 2; // optional
+  double quantity   = 3;
+}
+
+message ReserveStockRequest {
+  string            tenant_id      = 1;
+  string            outlet_id      = 2;
+  repeated StockItem items         = 3;
+  int32             ttl_seconds    = 4; // default: 300 (5 minutes)
+}
+
+message ReserveStockResponse {
+  bool   success        = 1;
+  string reservation_id = 2;
+  string error          = 3; // set if success = false (e.g. insufficient stock)
+  repeated string insufficient_product_ids = 4;
+}
+
+message DeductStockRequest {
+  string tenant_id      = 1;
+  string reservation_id = 2;
+  string transaction_id = 3; // for audit trail
+}
+
+message DeductStockResponse {
+  bool   success = 1;
+  string error   = 2;
+}
+
+message ReleaseStockRequest {
+  string tenant_id      = 1;
+  string reservation_id = 2;
+  string reason         = 3; // e.g. "void", "timeout"
+}
+
+message ReleaseStockResponse {
+  bool   success = 1;
+  string error   = 2;
+}

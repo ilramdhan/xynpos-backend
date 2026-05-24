@@ -1,0 +1,108 @@
+# =============================================================
+# XynPOS Prometheus Configuration
+# =============================================================
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    environment: "development"
+    project: "xynpos"
+
+rule_files:
+  - "alerts.yml"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []  # Add alertmanager endpoint in production
+
+scrape_configs:
+  # ── Backend Services ──────────────────────────────────────
+  - job_name: "xynpos-auth-service"
+    static_configs:
+      - targets: ["auth-service:8001"]
+    metrics_path: "/metrics"
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: service
+        replacement: "auth-service"
+
+  - job_name: "xynpos-tenant-service"
+    static_configs:
+      - targets: ["tenant-service:8002"]
+    metrics_path: "/metrics"
+
+  - job_name: "xynpos-product-service"
+    static_configs:
+      - targets: ["product-service:8003"]
+    metrics_path: "/metrics"
+
+  - job_name: "xynpos-inventory-service"
+    static_configs:
+      - targets: ["inventory-service:8004"]
+    metrics_path: "/metrics"
+
+  - job_name: "xynpos-pos-service"
+    static_configs:
+      - targets: ["pos-service:8005"]
+    metrics_path: "/metrics"
+
+  - job_name: "xynpos-payment-service"
+    static_configs:
+      - targets: ["payment-service:8006"]
+    metrics_path: "/metrics"
+
+  - job_name: "xynpos-customer-service"
+    static_configs:
+      - targets: ["customer-service:8007"]
+    metrics_path: "/metrics"
+
+  - job_name: "xynpos-report-service"
+    static_configs:
+      - targets: ["report-service:8008"]
+    metrics_path: "/metrics"
+
+  - job_name: "xynpos-notification-service"
+    static_configs:
+      - targets: ["notification-service:8009"]
+    metrics_path: "/metrics"
+
+  - job_name: "xynpos-file-service"
+    static_configs:
+      - targets: ["file-service:8010"]
+    metrics_path: "/metrics"
+
+  - job_name: "xynpos-subscription-service"
+    static_configs:
+      - targets: ["subscription-service:8011"]
+    metrics_path: "/metrics"
+
+  - job_name: "xynpos-audit-service"
+    static_configs:
+      - targets: ["audit-service:8012"]
+    metrics_path: "/metrics"
+
+  # ── Infrastructure ────────────────────────────────────────
+  - job_name: "kong"
+    static_configs:
+      - targets: ["kong:8001"]
+    metrics_path: "/metrics"
+
+  - job_name: "postgres"
+    static_configs:
+      - targets: ["postgres-exporter:9187"]
+
+  - job_name: "redis"
+    static_configs:
+      - targets: ["redis-exporter:9121"]
+
+  - job_name: "nats"
+    static_configs:
+      - targets: ["nats:8222"]
+    metrics_path: "/metrics"
+
+  # ── Prometheus self-monitoring ────────────────────────────
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]

@@ -1,0 +1,300 @@
+name: CI — Auth Service
+
+on:
+  push:
+    branches: [main, staging, develop]
+    paths:
+      - "backend/services/auth-service/**"
+      - "backend/shared/**"
+      - ".github/workflows/ci-auth-service.yml"
+  pull_request:
+    branches: [main, staging]
+    paths:
+      - "backend/services/auth-service/**"
+      - "backend/shared/**"
+
+env:
+  SERVICE: auth-service
+  SERVICE_PATH: backend/services/auth-service
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/auth-service
+  GO_VERSION: "1.23"
+
+jobs:
+  # ──────────────────────────────────────────────────────────
+  # 1. Lint
+  # ──────────────────────────────────────────────────────────
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          working-directory: ${{ env.SERVICE_PATH }}
+          args: --config=../../.golangci.yml --timeout=10m
+
+      - name: Security scan (govulncheck)
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          cd ${{ env.SERVICE_PATH }} && govulncheck ./...
+
+      - name: Secret scan (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ──────────────────────────────────────────────────────────
+  # 2. Unit Tests
+  # ──────────────────────────────────────────────────────────
+  unit-test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Run unit tests
+        working-directory: ${{ env.SERVICE_PATH }}
+        run: |
+          go test ./internal/... -v -short -race \
+            -coverprofile=coverage.out \
+            -covermode=atomic \
+            -count=1
+
+      - name: Check coverage threshold (>= 70%)
+        working-directory: ${{ env.SERVICE_PATH }}
+        run: |
+          COVERAGE=$(go tool cover -func=coverage.out | grep "total:" | awk '{print $3}' | sed 's/%//')
+          echo "Coverage: ${COVERAGE}%"
+          if [ $(echo "$COVERAGE < 70" | bc -l) -eq 1 ]; then
+            echo "❌ Coverage ${COVERAGE}% is below 70% threshold"
+            exit 1
+          fi
+          echo "✅ Coverage ${COVERAGE}% passes threshold"
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ env.SERVICE }}
+          path: ${{ env.SERVICE_PATH }}/coverage.out
+          retention-days: 7
+
+  # ──────────────────────────────────────────────────────────
+  # 3. Integration Tests
+  # ──────────────────────────────────────────────────────────
+  integration-test:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: xynpos_test
+          POSTGRES_USER: xynpos
+          POSTGRES_PASSWORD: test_password
+        options: >-
+          --health-cmd "pg_isready -U xynpos"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+      nats:
+        image: nats:latest
+        options: >-
+          --health-cmd "wget -qO- http://localhost:8222/healthz"
+          --health-interval 10s
+          --health-retries 5
+        ports:
+          - 4222:4222
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Run integration tests
+        working-directory: ${{ env.SERVICE_PATH }}
+        env:
+          DATABASE_URL: postgres://xynpos:test_password@localhost:5432/xynpos_test?sslmode=disable
+          REDIS_URL: redis://localhost:6379/0
+          NATS_URL: nats://localhost:4222
+          JWT_ACCESS_SECRET: test_secret_integration
+          JWT_REFRESH_SECRET: test_refresh_secret_integration
+          APP_ENV: test
+        run: |
+          go test ./... -v -run Integration -race -timeout 5m
+
+  # ──────────────────────────────────────────────────────────
+  # 4. Swagger Validation
+  # ──────────────────────────────────────────────────────────
+  swagger:
+    name: Swagger Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Install swag
+        run: go install github.com/swaggo/swag/cmd/swag@latest
+
+      - name: Generate and validate Swagger docs
+        working-directory: ${{ env.SERVICE_PATH }}
+        run: |
+          swag init -g cmd/main.go -o docs --parseDependency --parseInternal
+          echo "✅ Swagger docs generated successfully"
+
+  # ──────────────────────────────────────────────────────────
+  # 5. Docker Build + Image Scan
+  # ──────────────────────────────────────────────────────────
+  docker-build:
+    name: Docker Build & Scan
+    runs-on: ubuntu-latest
+    needs: [lint, unit-test]
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix=sha-
+            type=semver,pattern={{version}}
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ env.SERVICE_PATH }}
+          push: ${{ github.event_name == 'push' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Scan image with Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+          format: sarif
+          output: trivy-results.sarif
+          severity: "CRITICAL,HIGH"
+          exit-code: "1"
+        continue-on-error: true  # Don't fail the build, but upload results
+
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
+
+  # ──────────────────────────────────────────────────────────
+  # 6. Deploy to Staging
+  # ──────────────────────────────────────────────────────────
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [integration-test, docker-build]
+    if: github.ref == 'refs/heads/staging' && github.event_name == 'push'
+    environment: staging
+    concurrency:
+      group: deploy-staging-${{ env.SERVICE }}
+      cancel-in-progress: false
+
+    steps:
+      - name: Deploy to staging via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: deploy
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          script: |
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:staging
+            docker service update \
+              --image ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:staging \
+              --update-parallelism 1 \
+              --update-delay 10s \
+              xynpos_${{ env.SERVICE }}
+            echo "✅ Deployed ${{ env.SERVICE }} to staging"
+
+  # ──────────────────────────────────────────────────────────
+  # 7. Deploy to Production
+  # ──────────────────────────────────────────────────────────
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [integration-test, docker-build]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: production
+    concurrency:
+      group: deploy-production-${{ env.SERVICE }}
+      cancel-in-progress: false
+
+    steps:
+      - name: Deploy to production (blue-green)
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: deploy
+          key: ${{ secrets.PROD_SSH_KEY }}
+          script: |
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main
+            docker service update \
+              --image ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main \
+              --update-parallelism 1 \
+              --update-delay 30s \
+              --update-failure-action rollback \
+              xynpos_${{ env.SERVICE }}
+            echo "✅ Deployed ${{ env.SERVICE }} to production"

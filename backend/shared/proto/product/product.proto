@@ -1,0 +1,85 @@
+syntax = "proto3";
+
+package product.v1;
+
+option go_package = "github.com/extendedsynaptic/xynpos/shared/proto/product";
+
+// ProductService provides internal product data access for service-to-service calls.
+service ProductService {
+  // GetProduct retrieves a single product with full detail.
+  rpc GetProduct(GetProductRequest) returns (ProductResponse);
+
+  // GetProductsBulk retrieves multiple products at once (used by POS checkout).
+  rpc GetProductsBulk(GetProductsBulkRequest) returns (ProductsResponse);
+
+  // ValidateProductsExist checks that all product IDs exist and are active.
+  rpc ValidateProductsExist(ValidateProductsRequest) returns (ValidateProductsResponse);
+}
+
+message GetProductRequest {
+  string tenant_id  = 1;
+  string product_id = 2;
+}
+
+message GetProductsBulkRequest {
+  string          tenant_id   = 1;
+  repeated string product_ids = 2;
+}
+
+message ValidateProductsRequest {
+  string          tenant_id   = 1;
+  repeated string product_ids = 2;
+}
+
+message Product {
+  string  id             = 1;
+  string  name           = 2;
+  string  sku            = 3;
+  double  selling_price  = 4;
+  double  cost_price     = 5;
+  double  tax_rate       = 6;
+  bool    tax_included   = 7;
+  string  category_id    = 8;
+  string  category_name  = 9;
+  bool    track_inventory= 10;
+  bool    is_active      = 11;
+  repeated ProductVariant variants   = 12;
+  repeated ModifierGroup  modifiers  = 13;
+}
+
+message ProductVariant {
+  string id            = 1;
+  string name          = 2;
+  string sku           = 3;
+  double selling_price = 4;
+  double cost_price    = 5;
+}
+
+message ModifierGroup {
+  string id            = 1;
+  string name          = 2;
+  bool   is_required   = 3;
+  int32  min_selections= 4;
+  int32  max_selections= 5;
+  repeated Modifier modifiers = 6;
+}
+
+message Modifier {
+  string id               = 1;
+  string name             = 2;
+  double price_adjustment = 3;
+}
+
+message ProductResponse {
+  bool    found   = 1;
+  Product product = 2;
+}
+
+message ProductsResponse {
+  repeated Product products = 1;
+}
+
+message ValidateProductsResponse {
+  bool            all_exist       = 1;
+  repeated string missing_ids     = 2; // IDs that were not found or inactive
+}

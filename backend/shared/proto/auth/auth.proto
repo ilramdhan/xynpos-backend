@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package auth.v1;
+
+option go_package = "github.com/extendedsynaptic/xynpos/shared/proto/auth";
+
+// AuthService provides internal token validation for service-to-service calls.
+// NOT exposed via API Gateway — internal gRPC only.
+service AuthService {
+  // ValidateToken validates an access token and returns the embedded claims.
+  rpc ValidateToken(ValidateTokenRequest) returns (ValidateTokenResponse);
+
+  // GetUserPermissions returns the full permission list for a user in a tenant.
+  rpc GetUserPermissions(GetPermissionsRequest) returns (GetPermissionsResponse);
+}
+
+message ValidateTokenRequest {
+  string token = 1;
+}
+
+message ValidateTokenResponse {
+  bool   valid        = 1;
+  string user_id      = 2;
+  string tenant_id    = 3;
+  string outlet_id    = 4;
+  string role         = 5;
+  string plan         = 6;
+  repeated string permissions = 7;
+  string error        = 8; // set if valid = false
+}
+
+message GetPermissionsRequest {
+  string user_id   = 1;
+  string tenant_id = 2;
+}
+
+message GetPermissionsResponse {
+  repeated string permissions = 1;
+  string role                 = 2;
+}

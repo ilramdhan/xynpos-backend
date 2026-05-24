@@ -1,0 +1,98 @@
+groups:
+  # ── Critical: Service Availability ────────────────────────
+  - name: xynpos-service-availability
+    rules:
+      - alert: ServiceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Service {{ $labels.job }} is DOWN"
+          description: "Service {{ $labels.job }} has been unreachable for 1 minute."
+
+      - alert: HighErrorRate
+        expr: |
+          rate(xynpos_http_requests_total{status=~"5.."}[5m]) /
+          rate(xynpos_http_requests_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error rate on {{ $labels.job }}"
+          description: "Error rate > 5% on {{ $labels.job }}. Current value: {{ $value | humanizePercentage }}"
+
+      - alert: HighP95Latency
+        expr: |
+          histogram_quantile(0.95,
+            rate(xynpos_http_request_duration_seconds_bucket[5m])
+          ) > 0.3
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High P95 latency on {{ $labels.job }}"
+          description: "P95 latency > 300ms on {{ $labels.job }}. Current: {{ $value | humanizeDuration }}"
+
+  # ── Critical: POS Specific ─────────────────────────────────
+  - name: xynpos-pos-alerts
+    rules:
+      - alert: POSTransactionErrorRate
+        expr: |
+          rate(xynpos_pos_service_business_events_total{event="transaction_failed"}[5m]) > 0.1
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: "POS transaction failure rate is high"
+          description: "More than 0.1 transaction failures/second in the last 5 minutes."
+
+  # ── Database ───────────────────────────────────────────────
+  - name: xynpos-database
+    rules:
+      - alert: DatabaseConnectionsHigh
+        expr: pg_stat_database_numbackends > 400
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "PostgreSQL connections high: {{ $value }}"
+
+      - alert: DatabaseConnectionsCritical
+        expr: pg_stat_database_numbackends > 450
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL connections critical: {{ $value }}"
+
+  # ── Infrastructure ─────────────────────────────────────────
+  - name: xynpos-infrastructure
+    rules:
+      - alert: DiskSpaceHigh
+        expr: |
+          (node_filesystem_size_bytes - node_filesystem_free_bytes) /
+          node_filesystem_size_bytes > 0.85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Disk space > 85% on {{ $labels.instance }}"
+
+      - alert: DiskSpaceCritical
+        expr: |
+          (node_filesystem_size_bytes - node_filesystem_free_bytes) /
+          node_filesystem_size_bytes > 0.95
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Disk space > 95% on {{ $labels.instance }} — CRITICAL"
+
+      - alert: RedisMemoryHigh
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis memory usage > 80%"

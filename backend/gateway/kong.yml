@@ -1,0 +1,412 @@
+_format_version: "3.0"
+_transform: true
+
+# =============================================================
+# XynPOS Kong API Gateway — Declarative Configuration (DB-less)
+# =============================================================
+# All external traffic from Web (Next.js) and Mobile (Flutter)
+# goes through Kong. Internal service-to-service uses gRPC directly.
+# =============================================================
+
+# ── Plugins applied globally ───────────────────────────────────
+plugins:
+  - name: correlation-id
+    config:
+      header_name: X-Request-ID
+      generator: uuid#counter
+      echo_downstream: true
+
+  - name: prometheus
+    config:
+      status_code_metrics: true
+      latency_metrics: true
+      bandwidth_metrics: true
+      upstream_health_metrics: true
+
+  - name: response-ratelimiting
+    enabled: false  # Enable per-service as needed
+
+  - name: cors
+    config:
+      origins:
+        - "https://app.xynpos.com"
+        - "https://pos.xynpos.com"
+        - "https://admin.xynpos.com"
+        - "http://localhost:3000"
+        - "http://localhost:3001"
+        - "http://localhost:3002"
+      methods:
+        - GET
+        - POST
+        - PUT
+        - PATCH
+        - DELETE
+        - OPTIONS
+        - HEAD
+      headers:
+        - Authorization
+        - Content-Type
+        - Accept
+        - X-Request-ID
+        - X-Idempotency-Key
+        - X-Device-ID
+        - X-App-Version
+      credentials: true
+      max_age: 86400
+      preflight_continue: false
+
+# ── Upstreams (load balancing) ─────────────────────────────────
+upstreams:
+  - name: auth-service
+    algorithm: round-robin
+    targets:
+      - target: auth-service:8001
+        weight: 100
+    healthchecks:
+      active:
+        http_path: /health
+        healthy:
+          interval: 10
+          successes: 2
+        unhealthy:
+          interval: 5
+          http_failures: 3
+
+  - name: tenant-service
+    targets:
+      - target: tenant-service:8002
+        weight: 100
+
+  - name: product-service
+    targets:
+      - target: product-service:8003
+        weight: 100
+
+  - name: inventory-service
+    targets:
+      - target: inventory-service:8004
+        weight: 100
+
+  - name: pos-service
+    targets:
+      - target: pos-service:8005
+        weight: 100
+
+  - name: payment-service
+    targets:
+      - target: payment-service:8006
+        weight: 100
+
+  - name: customer-service
+    targets:
+      - target: customer-service:8007
+        weight: 100
+
+  - name: report-service
+    targets:
+      - target: report-service:8008
+        weight: 100
+
+  - name: notification-service
+    targets:
+      - target: notification-service:8009
+        weight: 100
+
+  - name: file-service
+    targets:
+      - target: file-service:8010
+        weight: 100
+
+  - name: subscription-service
+    targets:
+      - target: subscription-service:8011
+        weight: 100
+
+  - name: audit-service
+    targets:
+      - target: audit-service:8012
+        weight: 100
+
+# ── Services + Routes ─────────────────────────────────────────
+
+services:
+  # ─────────────────────────────────────────────────────────────
+  # Auth Service — Public endpoints (no JWT required)
+  # ─────────────────────────────────────────────────────────────
+  - name: auth-public
+    host: auth-service
+    port: 8001
+    protocol: http
+    routes:
+      - name: auth-register
+        paths: ["/v1/auth/register"]
+        methods: ["POST"]
+      - name: auth-login
+        paths: ["/v1/auth/login"]
+        methods: ["POST"]
+      - name: auth-refresh
+        paths: ["/v1/auth/refresh"]
+        methods: ["POST"]
+      - name: auth-forgot-password
+        paths: ["/v1/auth/forgot-password"]
+        methods: ["POST"]
+      - name: auth-reset-password
+        paths: ["/v1/auth/reset-password"]
+        methods: ["POST"]
+      - name: auth-verify-email
+        paths: ["/v1/auth/verify-email"]
+        methods: ["POST"]
+      - name: auth-resend-otp
+        paths: ["/v1/auth/resend-otp"]
+        methods: ["POST"]
+    plugins:
+      - name: rate-limiting
+        config:
+          minute: 20
+          policy: redis
+          redis_host: redis
+          redis_port: 6379
+          redis_password: "${REDIS_PASSWORD}"
+          error_code: 429
+          error_message: "Too many requests"
+
+  # ─────────────────────────────────────────────────────────────
+  # Auth Service — Protected endpoints (JWT required)
+  # ─────────────────────────────────────────────────────────────
+  - name: auth-protected
+    host: auth-service
+    port: 8001
+    protocol: http
+    routes:
+      - name: auth-me
+        paths: ["/v1/auth/me", "/v1/auth/sessions"]
+        methods: ["GET", "PATCH", "DELETE"]
+    plugins:
+      - name: jwt
+        config:
+          key_claim_name: tenant_id
+          claims_to_verify: [exp]
+          secret_is_base64: false
+
+  # ─────────────────────────────────────────────────────────────
+  # Tenant Service
+  # ─────────────────────────────────────────────────────────────
+  - name: tenant-service
+    host: tenant-service
+    port: 8002
+    protocol: http
+    routes:
+      - name: tenant-routes
+        paths: ["/v1/tenant", "/v1/outlets", "/v1/users", "/v1/roles"]
+        methods: ["GET", "POST", "PUT", "PATCH", "DELETE"]
+    plugins:
+      - name: jwt
+        config:
+          claims_to_verify: [exp]
+
+  # ─────────────────────────────────────────────────────────────
+  # Product Service
+  # ─────────────────────────────────────────────────────────────
+  - name: product-service
+    host: product-service
+    port: 8003
+    protocol: http
+    routes:
+      - name: product-routes
+        paths: ["/v1/products", "/v1/categories", "/v1/modifiers"]
+        methods: ["GET", "POST", "PUT", "PATCH", "DELETE"]
+    plugins:
+      - name: jwt
+        config:
+          claims_to_verify: [exp]
+      - name: rate-limiting
+        config:
+          minute: 300
+          policy: redis
+          redis_host: redis
+
+  # ─────────────────────────────────────────────────────────────
+  # POS Service — Mission critical, higher rate limits
+  # ─────────────────────────────────────────────────────────────
+  - name: pos-service
+    host: pos-service
+    port: 8005
+    protocol: http
+    connect_timeout: 10000
+    write_timeout: 30000
+    read_timeout: 30000
+    routes:
+      - name: pos-transactions
+        paths: ["/v1/transactions"]
+        methods: ["GET", "POST", "PATCH", "DELETE"]
+      - name: pos-sessions
+        paths: ["/v1/sessions"]
+        methods: ["GET", "POST"]
+      - name: pos-orders-held
+        paths: ["/v1/orders"]
+        methods: ["GET", "POST", "DELETE"]
+      - name: pos-tables
+        paths: ["/v1/tables"]
+        methods: ["GET", "POST", "PUT", "PATCH", "DELETE"]
+    plugins:
+      - name: jwt
+        config:
+          claims_to_verify: [exp]
+      - name: rate-limiting
+        config:
+          minute: 1000  # Higher for POS — kasir bisa transaksi cepat
+          policy: redis
+          redis_host: redis
+
+  # ─────────────────────────────────────────────────────────────
+  # Payment Service — Webhooks are public (signature validation in service)
+  # ─────────────────────────────────────────────────────────────
+  - name: payment-webhooks
+    host: payment-service
+    port: 8006
+    protocol: http
+    routes:
+      - name: payment-webhook-xendit
+        paths: ["/v1/webhooks/xendit"]
+        methods: ["POST"]
+      - name: payment-webhook-midtrans
+        paths: ["/v1/webhooks/midtrans"]
+        methods: ["POST"]
+    # No JWT — webhook signature validated in service
+
+  - name: payment-service
+    host: payment-service
+    port: 8006
+    protocol: http
+    routes:
+      - name: payment-routes
+        paths: ["/v1/payments"]
+        methods: ["GET", "POST", "DELETE"]
+    plugins:
+      - name: jwt
+        config:
+          claims_to_verify: [exp]
+
+  # ─────────────────────────────────────────────────────────────
+  # Customer Service
+  # ─────────────────────────────────────────────────────────────
+  - name: customer-service
+    host: customer-service
+    port: 8007
+    protocol: http
+    routes:
+      - name: customer-routes
+        paths: ["/v1/customers"]
+        methods: ["GET", "POST", "PUT", "PATCH", "DELETE"]
+    plugins:
+      - name: jwt
+        config:
+          claims_to_verify: [exp]
+
+  # ─────────────────────────────────────────────────────────────
+  # Report Service
+  # ─────────────────────────────────────────────────────────────
+  - name: report-service
+    host: report-service
+    port: 8008
+    protocol: http
+    connect_timeout: 60000
+    write_timeout: 120000
+    read_timeout: 120000
+    routes:
+      - name: report-routes
+        paths: ["/v1/reports"]
+        methods: ["GET", "POST"]
+    plugins:
+      - name: jwt
+        config:
+          claims_to_verify: [exp]
+      - name: rate-limiting
+        config:
+          minute: 60   # Reports are heavy queries
+
+  # ─────────────────────────────────────────────────────────────
+  # Notification Service — SSE endpoint for real-time
+  # ─────────────────────────────────────────────────────────────
+  - name: notification-service
+    host: notification-service
+    port: 8009
+    protocol: http
+    connect_timeout: 60000
+    write_timeout: 0      # SSE: no write timeout
+    read_timeout: 0       # SSE: no read timeout
+    routes:
+      - name: notification-sse
+        paths: ["/v1/events"]
+        methods: ["GET"]
+      - name: notification-routes
+        paths: ["/v1/notifications"]
+        methods: ["GET", "POST"]
+    plugins:
+      - name: jwt
+        config:
+          claims_to_verify: [exp]
+
+  # ─────────────────────────────────────────────────────────────
+  # File Service
+  # ─────────────────────────────────────────────────────────────
+  - name: file-service
+    host: file-service
+    port: 8010
+    protocol: http
+    routes:
+      - name: file-routes
+        paths: ["/v1/files"]
+        methods: ["GET", "POST", "DELETE"]
+    plugins:
+      - name: jwt
+        config:
+          claims_to_verify: [exp]
+
+  # ─────────────────────────────────────────────────────────────
+  # Subscription Service
+  # ─────────────────────────────────────────────────────────────
+  - name: subscription-service
+    host: subscription-service
+    port: 8011
+    protocol: http
+    routes:
+      - name: subscription-routes
+        paths: ["/v1/subscription"]
+        methods: ["GET", "POST", "PATCH", "DELETE"]
+    plugins:
+      - name: jwt
+        config:
+          claims_to_verify: [exp]
+
+  # ─────────────────────────────────────────────────────────────
+  # Inventory Service
+  # ─────────────────────────────────────────────────────────────
+  - name: inventory-service
+    host: inventory-service
+    port: 8004
+    protocol: http
+    routes:
+      - name: inventory-routes
+        paths: ["/v1/inventory"]
+        methods: ["GET", "POST", "PATCH"]
+    plugins:
+      - name: jwt
+        config:
+          claims_to_verify: [exp]
+
+  # ─────────────────────────────────────────────────────────────
+  # Audit Logs
+  # ─────────────────────────────────────────────────────────────
+  - name: audit-service
+    host: audit-service
+    port: 8012
+    protocol: http
+    routes:
+      - name: audit-routes
+        paths: ["/v1/audit-logs"]
+        methods: ["GET"]
+    plugins:
+      - name: jwt
+        config:
+          claims_to_verify: [exp]

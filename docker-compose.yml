@@ -1,0 +1,683 @@
+version: "3.9"
+
+# =============================================================
+# XynPOS — Full Local Development Stack
+# =============================================================
+# Usage:
+#   docker-compose up -d                     # Start all infra
+#   docker-compose --profile monitoring up -d # Include Jaeger, Prometheus, Grafana, Loki
+#   docker-compose down -v                   # Stop and remove volumes
+# =============================================================
+
+networks:
+  xynpos-net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  nats_data:
+  meilisearch_data:
+  minio_data:
+  kafka_data:
+  zookeeper_data:
+  pgbouncer_data:
+
+x-service-defaults: &service-defaults
+  networks: [xynpos-net]
+  restart: unless-stopped
+
+x-backend-env: &backend-env
+  APP_ENV: development
+  APP_LOG_LEVEL: debug
+  DATABASE_URL: postgres://xynpos:${POSTGRES_PASSWORD:-dev_password}@pgbouncer:5433/xynpos?sslmode=disable
+  REDIS_URL: redis://:${REDIS_PASSWORD:-dev_redis_password}@redis:6379/0
+  NATS_URL: nats://nats:4222
+  JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev_access_secret_change_in_production}
+  JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev_refresh_secret_change_in_production}
+  JWT_ACCESS_EXPIRY: 15m
+  JWT_REFRESH_EXPIRY: 720h
+  JWT_ISSUER: xynpos.com
+  STORAGE_PROVIDER: minio
+  STORAGE_ENDPOINT: http://minio:9000
+  STORAGE_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+  STORAGE_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+  STORAGE_BUCKET: xynpos-media
+  STORAGE_PUBLIC_URL: http://localhost:9000/xynpos-media
+  STORAGE_USE_SSL: "false"
+  STORAGE_REGION: us-east-1
+  EMAIL_PROVIDER: mock
+  TRACER_ENABLED: "true"
+  JAEGER_OTLP_URL: jaeger:4317
+  WORKER_CONCURRENCY: "5"
+
+services:
+
+  # ============================================================
+  # INFRASTRUCTURE
+  # ============================================================
+
+  postgres:
+    <<: *service-defaults
+    image: postgres:18-alpine
+    container_name: xynpos-postgres
+    environment:
+      POSTGRES_DB: xynpos
+      POSTGRES_USER: xynpos
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev_password}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --locale=C"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/docker/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U xynpos -d xynpos"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    command: >
+      postgres
+        -c max_connections=500
+        -c shared_buffers=256MB
+        -c effective_cache_size=1GB
+        -c maintenance_work_mem=64MB
+        -c checkpoint_completion_target=0.9
+        -c wal_buffers=16MB
+        -c log_min_duration_statement=500
+        -c log_statement=none
+
+  pgbouncer:
+    <<: *service-defaults
+    image: edoburu/pgbouncer:latest
+    container_name: xynpos-pgbouncer
+    environment:
+      DB_USER: xynpos
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-dev_password}
+      DB_HOST: postgres
+      DB_NAME: xynpos
+      POOL_MODE: session
+      MAX_CLIENT_CONN: "1000"
+      DEFAULT_POOL_SIZE: "25"
+      MIN_POOL_SIZE: "5"
+      RESERVE_POOL_SIZE: "10"
+      RESERVE_POOL_TIMEOUT: "5"
+      SERVER_IDLE_TIMEOUT: "600"
+      LOG_CONNECTIONS: "0"
+      LOG_DISCONNECTIONS: "0"
+      AUTH_TYPE: scram-sha-256
+    ports:
+      - "5433:5432"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U xynpos -h localhost -p 5432"]
+      interval: 10s
+      retries: 5
+
+  redis:
+    <<: *service-defaults
+    image: redis:7-alpine
+    container_name: xynpos-redis
+    command: >
+      redis-server
+        --requirepass ${REDIS_PASSWORD:-dev_redis_password}
+        --appendonly yes
+        --maxmemory 512mb
+        --maxmemory-policy allkeys-lru
+        --save 900 1
+        --save 300 10
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-dev_redis_password}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  nats:
+    <<: *service-defaults
+    image: nats:latest
+    container_name: xynpos-nats
+    command: >
+      --jetstream
+      --store_dir=/data
+      --max_memory_store=512MB
+      --max_file_store=2GB
+      --http_port=8222
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    volumes:
+      - nats_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8222/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  meilisearch:
+    <<: *service-defaults
+    image: getmeili/meilisearch:latest
+    container_name: xynpos-meilisearch
+    environment:
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:-dev_master_key_change_me}
+      MEILI_ENV: development
+      MEILI_LOG_LEVEL: WARN
+    ports:
+      - "7700:7700"
+    volumes:
+      - meilisearch_data:/meili_data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:7700/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    <<: *service-defaults
+    image: minio/minio:latest
+    container_name: xynpos-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # MinIO bucket setup (runs once)
+  minio-setup:
+    image: minio/mc:latest
+    container_name: xynpos-minio-setup
+    networks: [xynpos-net]
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+        mc alias set local http://minio:9000 ${MINIO_ROOT_USER:-minioadmin} ${MINIO_ROOT_PASSWORD:-minioadmin123};
+        mc mb --ignore-existing local/xynpos-media;
+        mc mb --ignore-existing local/xynpos-backups;
+        mc anonymous set download local/xynpos-media;
+        echo 'MinIO setup complete';
+      "
+    restart: "no"
+
+  # Kafka + Zookeeper (Phase 2 message broker — available in dev for testing)
+  zookeeper:
+    <<: *service-defaults
+    image: confluentinc/cp-zookeeper:latest
+    container_name: xynpos-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+    healthcheck:
+      test: ["CMD-SHELL", "echo ruok | nc localhost 2181"]
+      interval: 10s
+      retries: 5
+
+  kafka:
+    <<: *service-defaults
+    image: confluentinc/cp-kafka:latest
+    container_name: xynpos-kafka
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    ports:
+      - "29092:29092"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics --bootstrap-server localhost:9092 --list"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # ============================================================
+  # API GATEWAY
+  # ============================================================
+
+  kong:
+    <<: *service-defaults
+    image: kong:latest
+    container_name: xynpos-kong
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /etc/kong/kong.yml
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_LISTEN: "0.0.0.0:8001"
+      KONG_PLUGINS: bundled
+    volumes:
+      - ./backend/gateway/kong.yml:/etc/kong/kong.yml:ro
+    ports:
+      - "8000:8000"   # HTTP proxy (main entry point)
+      - "8443:8443"   # HTTPS proxy
+      - "8001:8001"   # Admin API
+    healthcheck:
+      test: ["CMD", "kong", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      - auth-service
+      - pos-service
+
+  # ============================================================
+  # BACKEND SERVICES
+  # ============================================================
+
+  auth-service:
+    <<: *service-defaults
+    build:
+      context: ./backend/services/auth-service
+      dockerfile: Dockerfile
+    container_name: xynpos-auth
+    environment:
+      <<: *backend-env
+      APP_NAME: auth-service
+      APP_PORT: "8001"
+    ports:
+      - "8011:8001"   # HTTP REST
+      - "9011:9001"   # gRPC
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8001/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  tenant-service:
+    <<: *service-defaults
+    build:
+      context: ./backend/services/tenant-service
+      dockerfile: Dockerfile
+    container_name: xynpos-tenant
+    environment:
+      <<: *backend-env
+      APP_NAME: tenant-service
+      APP_PORT: "8002"
+    ports:
+      - "8012:8002"
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8002/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  product-service:
+    <<: *service-defaults
+    build:
+      context: ./backend/services/product-service
+      dockerfile: Dockerfile
+    container_name: xynpos-product
+    environment:
+      <<: *backend-env
+      APP_NAME: product-service
+      APP_PORT: "8003"
+      MEILISEARCH_URL: http://meilisearch:7700
+      MEILISEARCH_API_KEY: ${MEILI_MASTER_KEY:-dev_master_key_change_me}
+    ports:
+      - "8013:8003"
+      - "9013:9003"   # gRPC
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+      meilisearch:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8003/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  inventory-service:
+    <<: *service-defaults
+    build:
+      context: ./backend/services/inventory-service
+      dockerfile: Dockerfile
+    container_name: xynpos-inventory
+    environment:
+      <<: *backend-env
+      APP_NAME: inventory-service
+      APP_PORT: "8004"
+    ports:
+      - "8014:8004"
+      - "9014:9004"   # gRPC
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8004/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  pos-service:
+    <<: *service-defaults
+    build:
+      context: ./backend/services/pos-service
+      dockerfile: Dockerfile
+    container_name: xynpos-pos
+    environment:
+      <<: *backend-env
+      APP_NAME: pos-service
+      APP_PORT: "8005"
+      PRODUCT_GRPC_ADDR: product-service:9003
+      INVENTORY_GRPC_ADDR: inventory-service:9004
+      PAYMENT_GRPC_ADDR: payment-service:9006
+    ports:
+      - "8015:8005"
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+      product-service:
+        condition: service_healthy
+      inventory-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8005/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  payment-service:
+    <<: *service-defaults
+    build:
+      context: ./backend/services/payment-service
+      dockerfile: Dockerfile
+    container_name: xynpos-payment
+    environment:
+      <<: *backend-env
+      APP_NAME: payment-service
+      APP_PORT: "8006"
+      XENDIT_SECRET_KEY: ${XENDIT_SECRET_KEY:-}
+      XENDIT_WEBHOOK_TOKEN: ${XENDIT_WEBHOOK_TOKEN:-}
+      MIDTRANS_SERVER_KEY: ${MIDTRANS_SERVER_KEY:-}
+    ports:
+      - "8016:8006"
+      - "9016:9006"   # gRPC
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8006/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  customer-service:
+    <<: *service-defaults
+    build:
+      context: ./backend/services/customer-service
+      dockerfile: Dockerfile
+    container_name: xynpos-customer
+    environment:
+      <<: *backend-env
+      APP_NAME: customer-service
+      APP_PORT: "8007"
+    ports:
+      - "8017:8007"
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8007/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  report-service:
+    <<: *service-defaults
+    build:
+      context: ./backend/services/report-service
+      dockerfile: Dockerfile
+    container_name: xynpos-report
+    environment:
+      <<: *backend-env
+      APP_NAME: report-service
+      APP_PORT: "8008"
+    ports:
+      - "8018:8008"
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8008/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  notification-service:
+    <<: *service-defaults
+    build:
+      context: ./backend/services/notification-service
+      dockerfile: Dockerfile
+    container_name: xynpos-notification
+    environment:
+      <<: *backend-env
+      APP_NAME: notification-service
+      APP_PORT: "8009"
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-noreply@xynpos.com}
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}
+      FIREBASE_CREDENTIALS_JSON: ${FIREBASE_CREDENTIALS_JSON:-}
+    ports:
+      - "8019:8009"
+    depends_on:
+      nats:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8009/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  file-service:
+    <<: *service-defaults
+    build:
+      context: ./backend/services/file-service
+      dockerfile: Dockerfile
+    container_name: xynpos-file
+    environment:
+      <<: *backend-env
+      APP_NAME: file-service
+      APP_PORT: "8010"
+    ports:
+      - "8020:8010"
+    depends_on:
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8010/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  subscription-service:
+    <<: *service-defaults
+    build:
+      context: ./backend/services/subscription-service
+      dockerfile: Dockerfile
+    container_name: xynpos-subscription
+    environment:
+      <<: *backend-env
+      APP_NAME: subscription-service
+      APP_PORT: "8011"
+    ports:
+      - "8021:8011"
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8011/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  audit-service:
+    <<: *service-defaults
+    build:
+      context: ./backend/services/audit-service
+      dockerfile: Dockerfile
+    container_name: xynpos-audit
+    environment:
+      <<: *backend-env
+      APP_NAME: audit-service
+      APP_PORT: "8012"
+    ports:
+      - "8022:8012"
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8012/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # ============================================================
+  # MONITORING (profile: monitoring)
+  # ============================================================
+
+  jaeger:
+    <<: *service-defaults
+    profiles: [monitoring]
+    image: jaegertracing/all-in-one:latest
+    container_name: xynpos-jaeger
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+      SPAN_STORAGE_TYPE: memory
+    ports:
+      - "16686:16686"   # Jaeger UI
+      - "4317:4317"     # OTLP gRPC
+      - "4318:4318"     # OTLP HTTP
+      - "14268:14268"   # Thrift HTTP
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:16686/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  prometheus:
+    <<: *service-defaults
+    profiles: [monitoring]
+    image: prom/prometheus:latest
+    container_name: xynpos-prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/etc/prometheus/console_libraries"
+      - "--web.console.templates=/etc/prometheus/consoles"
+      - "--web.enable-lifecycle"
+    volumes:
+      - ./infra/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
+    ports:
+      - "9090:9090"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9090/-/healthy || exit 1"]
+      interval: 15s
+      retries: 5
+
+  grafana:
+    <<: *service-defaults
+    profiles: [monitoring]
+    image: grafana/grafana:latest
+    container_name: xynpos-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/xynpos-overview.json
+    volumes:
+      - ./infra/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+      - loki
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
+      interval: 15s
+      retries: 5
+
+  loki:
+    <<: *service-defaults
+    profiles: [monitoring]
+    image: grafana/loki:latest
+    container_name: xynpos-loki
+    command: -config.file=/etc/loki/local-config.yaml
+    ports:
+      - "3100:3100"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3100/ready || exit 1"]
+      interval: 15s
+      retries: 5
+
+  promtail:
+    <<: *service-defaults
+    profiles: [monitoring]
+    image: grafana/promtail:latest
+    container_name: xynpos-promtail
+    volumes:
+      - /var/log:/var/log:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - ./infra/monitoring/promtail.yml:/etc/promtail/config.yml:ro
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      - loki
