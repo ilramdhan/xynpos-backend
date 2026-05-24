@@ -1,6 +1,8 @@
 go 1.26.2
 
 use (
+	./backend/services/auth-service
+	./backend/services/tenant-service
 	./backend/shared
 )
 

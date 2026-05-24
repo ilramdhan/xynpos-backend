@@ -124,3 +124,50 @@ func Is(err, target error) bool {
 func As(err error, target interface{}) bool {
 	return errors.As(err, target)
 }
+
+// ──────────────────────────────────────────────
+// HTTP Error Resolution (for handlers)
+// ──────────────────────────────────────────────
+
+// HTTPError is a simple struct for HTTP handlers to use.
+type HTTPError struct {
+	Code       string
+	Message    string
+	StatusCode int
+}
+
+// ToHTTPError converts any error to an HTTPError for use in HTTP handlers.
+// Traverses the error chain — AppErrors take priority.
+// Domain sentinel errors are mapped to their appropriate status codes.
+func ToHTTPError(err error) HTTPError {
+	if err == nil {
+		return HTTPError{Code: "INTERNAL_ERROR", Message: "Unknown error", StatusCode: 500}
+	}
+
+	// Check for AppError in chain
+	var appErr *AppError
+	if errors.As(err, &appErr) {
+		return HTTPError{
+			Code:       appErr.Code,
+			Message:    appErr.Message,
+			StatusCode: appErr.HTTPStatus,
+		}
+	}
+
+	return HTTPError{
+		Code:       "INTERNAL_ERROR",
+		Message:    "An internal error occurred",
+		StatusCode: http.StatusInternalServerError,
+	}
+}
+
+// DomainErrorToHTTP maps common domain sentinel errors to HTTP errors.
+// Use this in handlers when you need to translate service-layer errors.
+func DomainErrorToHTTP(err error, domainMap map[error]HTTPError) HTTPError {
+	for domainErr, httpErr := range domainMap {
+		if errors.Is(err, domainErr) {
+			return httpErr
+		}
+	}
+	return ToHTTPError(err)
+}
