@@ -180,6 +180,22 @@ args: --config=../../.golangci.yml --timeout 5m
 
 ---
 
+### RULE-CI-007: Measure coverage PER LAYER, not aggregate across all packages
+**Problem:** `go tool cover -func=coverage.out | grep total` returns coverage across ALL
+packages in the coverage profile, including `domain/` and `repository/postgres/` which
+have no unit tests. This dilutes the metric:
+- delivery: 80%, usecase: 77% → aggregate total: **46%** ❌ (falsely fails 70% gate)
+
+**Rule:** Check coverage per testable layer using awk averaging:
+```bash
+HANDLER=$(go tool cover -func=coverage.out | grep '/delivery/' | \
+  grep -v '_test' | \
+  awk '{sum+=$3; count++} END {if(count>0) printf "%.1f", sum/count; else print "0"}' | tr -d '%')
+```
+Gate: delivery layer avg >= 70% (hard fail). Usecase warn-only (grows with integration tests).
+
+---
+
 ## 3. Proto / gRPC Rules
 
 ### RULE-PROTO-001: Commit generated proto files to the repo
