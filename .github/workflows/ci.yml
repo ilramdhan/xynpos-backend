@@ -51,14 +51,12 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v7
         with:
-          # RULE-CI-005: golangci-lint v2.x supports Go 1.25+.
           version: v2.12.2
-          # RULE-CI-014: Run from REPO ROOT (where go.work lives), NOT from
-          #   service subdirectory. golangci-lint's internal type checker cannot
-          #   resolve workspace replace directives when running from a subdirectory,
-          #   even with GOWORK set. Running from repo root lets Go find go.work
-          #   naturally and resolve cross-module imports (shared/proto/auth).
-          args: --config=.golangci.yml --timeout 5m ./backend/services/${{ matrix.service }}/...
+          # RULE-CI-014: --build-tags=cilint excludes files with //go:build !cilint
+          #   (grpc package) from compilation. golangci-lint v2's type checker
+          #   cannot resolve workspace replace directives for shared/proto/auth.
+          #   Normal go build/test (no cilint tag) still compiles grpc normally.
+          args: --config=.golangci.yml --timeout 5m --build-tags=cilint ./backend/services/${{ matrix.service }}/...
 
   # ────────────────────────────────────────────────────────────────
   # TEST — AUTH SERVICE

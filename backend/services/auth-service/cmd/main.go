@@ -1,3 +1,5 @@
+//go:build !cilint
+
 package main
 
 import (

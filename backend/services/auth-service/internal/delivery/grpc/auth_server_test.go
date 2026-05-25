@@ -1,3 +1,5 @@
+//go:build !cilint
+
 package grpc_test
 
 import (

@@ -1,3 +1,8 @@
+// RULE-CI-014: This file is excluded from golangci-lint in CI via build tag.
+// golangci-lint v2's type checker cannot resolve workspace replace directives
+// for shared/proto/auth. Normal go build/test works fine (no cilint tag).
+//go:build !cilint
+
 package grpc
 
 import (

@@ -43,12 +43,9 @@ jobs:
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v7
         with:
-          # RULE-CI-005: Use golangci-lint v2.x (built with Go 1.25+).
           version: v2.12.2
-          # RULE-CI-014: Run from REPO ROOT where go.work lives.
-          #   golangci-lint's type checker can't resolve replace directives
-          #   from service subdirectories. Target service packages explicitly.
-          args: --config=.golangci.yml --timeout=10m ./backend/services/auth-service/...
+          # RULE-CI-014: --build-tags=cilint excludes grpc files (//go:build !cilint)
+          args: --config=.golangci.yml --timeout=10m --build-tags=cilint ./backend/services/auth-service/...
 
       - name: Security scan (govulncheck)
         working-directory: ${{ env.SERVICE_PATH }}
